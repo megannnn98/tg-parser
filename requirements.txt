@@ -1,0 +1,4 @@
+aiosqlite
+asyncio
+pyrogram
+tgcrypto

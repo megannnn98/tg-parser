@@ -1,0 +1,7 @@
+API_ID = 31096588
+API_HASH = "2a4f459b6747505ded8367f7be4b71ef"
+LIMIT = 10000
+
+CHANNEL_USERNAME = "ru_doy"
+EXPORT_ENCODING = "utf-8"
+DB_PATH = "/home/b/Desktop/pet/messages.db"
