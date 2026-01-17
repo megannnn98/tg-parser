@@ -1,7 +1,8 @@
 import asyncio
-from parser.telegram import get_client
 from parser.database import get_db, init_db
+from parser.telegram import get_client
 from parser.collector import collect_data
+
 
 async def main():
     db = await get_db()
@@ -14,7 +15,7 @@ async def main():
 
     await db.commit()
     await db.close()
-    print("Done")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

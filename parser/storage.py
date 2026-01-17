@@ -1,24 +1,36 @@
-from parser.models import Message, User
-
-async def save_message(db, message: Message):
+async def upsert_user(db, tg_user_id, username):
     await db.execute(
         """
-        INSERT INTO messages (discussion_id, date, user, text)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO users (tg_user_id, username)
+        VALUES (?, ?)
+        ON CONFLICT(tg_user_id)
+        DO UPDATE SET username = excluded.username
         """,
-        (
-            message.discussion_id,
-            message.date,
-            message.user,
-            message.text
-        )
+        (tg_user_id, username)
     )
 
-async def save_user(db, user: User):
+
+async def get_user_id(db, tg_user_id):
+    async with db.execute(
+        "SELECT id FROM users WHERE tg_user_id = ?",
+        (tg_user_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        return row[0]
+
+
+async def save_message(db, msg):
     await db.execute(
         """
-        INSERT OR IGNORE INTO users (user)
-        VALUES (?)
+        INSERT OR IGNORE INTO messages
+        (tg_message_id, discussion_id, user_id, date, text)
+        VALUES (?, ?, ?, ?, ?)
         """,
-        (user.user,)
+        (
+            msg.tg_message_id,
+            msg.discussion_id,
+            msg.user_id,
+            msg.date,
+            msg.text
+        )
     )
