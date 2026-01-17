@@ -1,0 +1,5 @@
+## Run
+
+```
+./scripts/run.sh
+```
