@@ -1,4 +1,5 @@
 aiosqlite
 asyncio
-pyrogram
-tgcrypto
+pyrogram==2.0.106
+python-dotenv
+tgcrypto==1.2.5

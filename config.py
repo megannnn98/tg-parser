@@ -4,4 +4,4 @@ LIMIT = 10000
 
 CHANNEL_USERNAME = "ru_doy"
 EXPORT_ENCODING = "utf-8"
-DB_PATH = "/home/b/Desktop/pet/messages.db"
+DB_PATH = "/app/data/messages.db"

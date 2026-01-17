@@ -6,7 +6,15 @@ from parser.database import get_db, init_db
 from parser.storage import save_message, save_user
 from config import CHANNEL_USERNAME
 
-with Client("my_session", api_id=API_ID, api_hash=API_HASH) as app:
+async def main():
+    db = await get_db()
+    await init_db(db)
+
+    app = get_client()
+    await app.start()
     print("Logged in")
 
+    await app.stop()
 
+if __name__ == "__main__":
+    asyncio.run(main())
