@@ -1,4 +1,4 @@
 parser/__pycache__
 __pycache__
-messages.db
+*.db
 my_session.session
