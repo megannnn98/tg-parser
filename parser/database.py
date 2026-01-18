@@ -1,8 +1,12 @@
 # parser/database.py
 import aiosqlite
 from config import DB_PATH
+from parser.logger import get_logger
+
+logger = get_logger(__name__)
 
 async def get_db():
+    logger.info(f"Opening database at {DB_PATH}")
     return await aiosqlite.connect(DB_PATH)
 
 async def init_db(db):
