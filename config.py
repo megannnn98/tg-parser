@@ -1,7 +1,12 @@
-API_ID = 31096588
-API_HASH = "2a4f459b6747505ded8367f7be4b71ef"
-LIMIT = 10
+import os
+from dotenv import load_dotenv
 
-CHANNEL_USERNAME = "ru_doy"
+load_dotenv()
+
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+LIMIT = int(os.getenv("LIMIT", 10))
+
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME")
 EXPORT_ENCODING = "utf-8"
-DB_PATH = "/app/data/messages.db"
+DB_PATH = os.getenv("DB_PATH")
