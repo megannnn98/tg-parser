@@ -1,34 +1,29 @@
-# parser/database.py
 import aiosqlite
-from config import DB_PATH
-from parser.logger import get_logger
+from pathlib import Path
 
-logger = get_logger(__name__)
-
-async def get_db():
-    logger.info(f"Opening database at {DB_PATH}")
-    return await aiosqlite.connect(DB_PATH)
+async def get_db(db_path: Path):
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return await aiosqlite.connect(str(db_path))
 
 async def init_db(db):
     await db.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tg_user_id INTEGER UNIQUE,
+            tg_id INTEGER UNIQUE NOT NULL,
             username TEXT
         )
     """)
-
     await db.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tg_message_id INTEGER,
             discussion_id INTEGER,
+            message_id INTEGER,
             user_id INTEGER,
             date TEXT,
             text TEXT,
-            UNIQUE (tg_message_id, discussion_id),
+
+            UNIQUE (discussion_id, message_id),
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
-
     await db.commit()

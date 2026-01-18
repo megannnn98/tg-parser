@@ -1,33 +1,28 @@
 import asyncio
-from parser.database import get_db, init_db
 from parser.telegram import get_client
-from parser.collector import collect_data
-from parser.logger import get_logger
-from config import CHANNEL_USERNAME
+from parser.database import get_db, init_db
+from parser.collector import collect_channel
+from parser.utils import parse_channels, db_path_for_channel
+from config import CHANNELS
 
-logger = get_logger(__name__)
 
 async def main():
-    logger.info("Application started")
-
-    if not CHANNEL_USERNAME:
-        logger.error("CHANNEL_USERNAME is not set, check .env file")
-        return
-
-    db = await get_db()
-    await init_db(db)
-    logger.info("Database connected")
+    channels = parse_channels(CHANNELS)
+    if not channels:
+        raise RuntimeError("CHANNELS is empty")
 
     app = get_client()
 
     async with app:
-        logger.info("Telegram client started")
-        await collect_data(app, db)
+        for channel in channels:
+            db_path = db_path_for_channel(channel)
+            db = await get_db(db_path)
 
-    await db.commit()
-    await db.close()
-    logger.info("Application finished")
-
+            try:
+                await init_db(db)
+                await collect_channel(app, db, channel)
+            finally:
+                await db.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
