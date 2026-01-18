@@ -3,11 +3,16 @@ from parser.database import get_db, init_db
 from parser.telegram import get_client
 from parser.collector import collect_data
 from parser.logger import get_logger
+from config import CHANNEL_USERNAME
 
 logger = get_logger(__name__)
 
 async def main():
     logger.info("Application started")
+
+    if not CHANNEL_USERNAME:
+        logger.error("CHANNEL_USERNAME is not set, check .env file")
+        return
 
     db = await get_db()
     await init_db(db)

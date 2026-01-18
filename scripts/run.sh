@@ -3,4 +3,4 @@ set -e
 
 PWD=`pwd`
 
-docker run --rm -v "$(pwd):/app" telegram-parser
+docker run --env-file .env.docker -v "$(pwd):/app" telegram-parser
