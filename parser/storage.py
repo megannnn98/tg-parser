@@ -1,18 +1,3 @@
-async def get_or_create_user(db, tg_id: int, username: str | None):
-    await db.execute(
-        """
-        INSERT OR IGNORE INTO users (tg_id, username)
-        VALUES (?, ?)
-        """,
-        (tg_id, username)
-    )
-
-    async with db.execute(
-        "SELECT id FROM users WHERE tg_id = ?",
-        (tg_id,)
-    ) as cursor:
-        row = await cursor.fetchone()
-        return row[0]
 
 async def save_message(db, discussion_id, msg, user_id):
     await db.execute(
@@ -29,3 +14,24 @@ async def save_message(db, discussion_id, msg, user_id):
             msg["text"],
         )
     )
+async def upsert_user(db, tg_id: int, username: str | None) -> int:
+    async with db.execute(
+        """
+        INSERT INTO users (tg_id, username)
+        VALUES (?, ?)
+        ON CONFLICT(tg_id) DO UPDATE SET
+            username = excluded.username
+        RETURNING id
+        """,
+        (tg_id, username)
+    ) as cursor:
+        row = await cursor.fetchone()
+        return row[0]
+
+async def get_user_id(db, tg_id: int) -> int | None:
+    async with db.execute(
+        "SELECT id FROM users WHERE tg_id = ?",
+        (tg_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+        return row[0] if row else None
