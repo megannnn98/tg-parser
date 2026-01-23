@@ -26,7 +26,7 @@ async def main():
                 logger.info(f"Finished collecting channel {channel}")
             finally:
                 await db.close()
-        logger.info("Doner")
+        logger.info("Done")
 
 if __name__ == "__main__":
     asyncio.run(main())
