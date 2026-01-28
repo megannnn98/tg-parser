@@ -1,7 +1,7 @@
 ## Run request to the DB
 
 ```
-./scripts/run.sh
+./scripts/run.sh <collect | haters>
 ```
 
 ## Run web server

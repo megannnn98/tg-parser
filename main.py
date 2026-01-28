@@ -2,6 +2,7 @@ import asyncio
 from parser.collector import collect_db
 import aiosqlite
 import re
+import argparse
 
 async def get_user_messages_from_db(
     db_path: str,
@@ -53,7 +54,7 @@ async def get_haters_from_db(db_path: str, hate_words: list[str]) -> list[int]:
     return haters
 
 async def get_haters(db_path: str):
-    hate_words = ["диалектика"]
+    hate_words = ["рудуа"]
     haters = await get_haters_from_db(db_path, hate_words=hate_words)
     return haters
 
@@ -71,19 +72,32 @@ async def print_user_messages(db_path: str, tg_id: int):
         print("-", msg)
 
 
-COLLECT_MESSAGES_FROM_TG = 0
-FIND_HATERS_IN_DB = 1
 
-cmd = FIND_HATERS_IN_DB
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Telegram parser"
+    )
+
+    parser.add_argument(
+        "mode",
+        nargs="?",
+        default="collect",
+        choices=["collect", "haters"],
+        help="Run mode"
+    )
+
+    return parser.parse_args()
+
 
 async def main():
+    args = parse_args()
+    db_path = "data/ru_doy.db"
+    # db_path = "data/vihod_est.db"
 
-    # db_path = "data/ru_doy.db"
-    db_path = "data/vihod_est.db"
-
-    if cmd == COLLECT_MESSAGES_FROM_TG:
+    if args.mode == "collect":
         await collect_db()
-    elif cmd == FIND_HATERS_IN_DB:
+    elif args.mode == "haters":
         haters = await get_haters(db_path)
         for hater in haters:
             await print_user_messages(db_path, tg_id=hater)
