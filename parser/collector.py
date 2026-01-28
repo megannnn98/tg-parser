@@ -1,25 +1,31 @@
-from parser.telegram import fetch_messages
-from parser.storage import upsert_user, save_message
+from parser.telegram import fetch_messages, get_client
+from parser.storage import upsert_user, save_message, upsert_topic
 from parser.logger import get_logger
 from parser.utils import parse_channels, db_path_for_channel
-from parser.telegram import get_client
 from parser.database import get_db, init_db
 from config import CHANNELS
 import aiosqlite
 
+
 async def collect_channel(tg_client, db, channel_username: str):
+    logger = get_logger("main")
+
     channel = await tg_client.get_chat(channel_username)
 
     if not channel.linked_chat:
+        logger.warning(f"Channel {channel_username} has no linked discussion")
         return
 
-    chat_id = channel.linked_chat.id
+    discussion_id = channel.linked_chat.id
+    topic_title = channel.title
 
-    logger = get_logger("main")
+    await upsert_topic(
+        db,
+        discussion_id=discussion_id,
+        title=topic_title
+    )
 
-    logger.info(f"Collecting channel \"{channel_username}\"")
-
-    async for msg in fetch_messages(tg_client, chat_id):
+    async for msg in fetch_messages(tg_client, discussion_id):
         user_id = await upsert_user(
             db,
             tg_id=msg["tg_id"],
@@ -28,22 +34,30 @@ async def collect_channel(tg_client, db, channel_username: str):
 
         await save_message(
             db,
-            discussion_id=chat_id,
+            discussion_id=discussion_id,
             msg=msg,
             user_id=user_id
         )
 
     await db.commit()
 
-async def get_db_stats(db_path: str) -> tuple[int, int]:
+
+async def get_db_stats(db_path: str) -> tuple[int, int, int]:
     async with aiosqlite.connect(db_path) as db:
-        async with db.execute("SELECT COUNT(*) FROM users") as cur:
-            users_count = (await cur.fetchone())[0]
 
-        async with db.execute("SELECT COUNT(*) FROM messages") as cur:
-            messages_count = (await cur.fetchone())[0]
+        async def count(table: str) -> int:
+            try:
+                async with db.execute(f"SELECT COUNT(*) FROM {table}") as cur:
+                    return (await cur.fetchone())[0]
+            except aiosqlite.OperationalError:
+                return 0
 
-    return users_count, messages_count
+        users_count = await count("users")
+        messages_count = await count("messages")
+        topics_count = await count("topic")
+
+    return users_count, messages_count, topics_count
+
 
 
 async def collect_db():
@@ -58,26 +72,33 @@ async def collect_db():
         for channel in channels:
             db_path = db_path_for_channel(channel)
 
-            users_before, messages_before = await get_db_stats(db_path)
+            # ⬇️ СНАЧАЛА открываем БД и создаём схему
+            db = await get_db(db_path)
+            try:
+                await init_db(db)
+            finally:
+                await db.close()
+
+            # ⬇️ ТЕПЕРЬ таблицы гарантированно есть
+            users_before, messages_before, topics_before = await get_db_stats(db_path)
 
             logger.info(
-                f"[{channel}] BEFORE → users={users_before}, messages={messages_before}"
+                f"[{channel}] BEFORE → users={users_before}, "
+                f"messages={messages_before}, topics={topics_before}"
             )
 
             db = await get_db(db_path)
             try:
-                logger.info(f"Collecting channel {channel}")
-                await init_db(db)
                 await collect_channel(tg_client, db, channel)
-                logger.info(f"Finished collecting channel {channel}")
             finally:
                 await db.close()
 
-            users_after, messages_after = await get_db_stats(db_path)
+            users_after, messages_after, topics_after = await get_db_stats(db_path)
 
             logger.info(
                 f"[{channel}] AFTER  → users={users_after} (+{users_after - users_before}), "
-                f"messages={messages_after} (+{messages_after - messages_before})"
+                f"messages={messages_after} (+{messages_after - messages_before}), "
+                f"topics={topics_after} (+{topics_after - topics_before})"
             )
 
         logger.info("Done")

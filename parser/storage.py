@@ -35,3 +35,21 @@ async def get_user_id(db, tg_id: int) -> int | None:
     ) as cursor:
         row = await cursor.fetchone()
         return row[0] if row else None
+
+async def upsert_topic(
+    db,
+    discussion_id: int,
+    title: str | None
+) -> int:
+    async with db.execute(
+        """
+        INSERT INTO topic (discussion_id, title)
+        VALUES (?, ?)
+        ON CONFLICT(discussion_id) DO UPDATE SET
+            title = excluded.title
+        RETURNING id
+        """,
+        (discussion_id, title)
+    ) as cursor:
+        row = await cursor.fetchone()
+        return row[0]

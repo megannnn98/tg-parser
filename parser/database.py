@@ -13,6 +13,15 @@ async def init_db(db):
             username TEXT
         )
     """)
+
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS topic (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discussion_id INTEGER UNIQUE NOT NULL,
+            title TEXT
+        )
+    """)
+
     await db.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -23,7 +32,9 @@ async def init_db(db):
             text TEXT,
 
             UNIQUE (discussion_id, message_id),
-            FOREIGN KEY(user_id) REFERENCES users(id)
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(discussion_id) REFERENCES topic(discussion_id)
         )
     """)
+
     await db.commit()
