@@ -1,6 +1,7 @@
 import re
 from pathlib import Path
 from config import DATA_DIR
+import argparse
 
 def sanitize_channel_name(name: str) -> str:
     name = name.strip().lstrip("@").lower()
@@ -23,3 +24,18 @@ def list_channels() -> list[str]:
         channels.append(db.stem)  # ru_doy.db -> ru_doy
 
     return sorted(channels)
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Telegram parser"
+    )
+
+    parser.add_argument(
+        "mode",
+        nargs="?",
+        default="collect",
+        choices=["collect", "haters"],
+        help="Run mode"
+    )
+
+    return parser.parse_args()
