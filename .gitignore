@@ -2,3 +2,4 @@ parser/__pycache__
 __pycache__
 *.db
 my_session.session
+out.txt

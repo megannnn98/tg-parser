@@ -20,13 +20,19 @@ async def main():
         for channel in channels:
             db_path = f"data/{channel}.db"
 
-            print("*" * 40)
+            haters = await get_haters_from_db(db_path, hate_words)
+
+            if not haters:
+                continue
+
+            print("****************************************")
             print(f"Канал {channel}")
-            print("*" * 40)
+            print("")
+            print("")
 
             logger.info(f"Processing {channel} ({db_path})")
 
-            haters = await get_haters_from_db(db_path, hate_words)
+
             for hater in haters:
                 await print_user_messages(db_path, hater)
 
