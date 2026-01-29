@@ -44,21 +44,33 @@ async def get_username_by_tg_id(
 async def get_haters_from_db(
     db_path: str,
     hate_words: list[str]
-) -> list[int]:
+) -> list[tuple[int, str | None, int]]:
     users = await get_users_from_db(db_path)
-    haters = []
+
+    result: list[tuple[int, str | None, int]] = []
 
     pattern = re.compile(
         r"\b(" + "|".join(map(re.escape, hate_words)) + r")\b",
         re.IGNORECASE
     )
 
-    for user in users:
-        messages = await get_user_messages_from_db(db_path, user)
-        if any(pattern.search(msg) for msg in messages):
-            haters.append(user)
+    for tg_id in users:
+        messages = await get_user_messages_from_db(db_path, tg_id)
 
-    return haters
+        count = 0
+        for msg in messages:
+            count += len(pattern.findall(msg))
+
+        if count == 0:
+            continue
+
+        username = await get_username_by_tg_id(db_path, tg_id)
+
+        result.append((tg_id, username, count))
+
+    return result
+
+
 
 
 async def print_user_messages(db_path: str, tg_id: int):
