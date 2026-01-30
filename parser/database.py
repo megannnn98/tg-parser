@@ -1,12 +1,13 @@
 import aiosqlite
 from pathlib import Path
+from config import DB_PATH, CHANNELS
 
 async def get_db(db_path: Path):
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return await aiosqlite.connect(str(db_path))
 
-async def init_db(db):
-    await db.execute("""
+async def init_db(db_handle):
+    await db_handle.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             tg_id INTEGER UNIQUE NOT NULL,
@@ -14,27 +15,34 @@ async def init_db(db):
         )
     """)
 
-    await db.execute("""
-        CREATE TABLE IF NOT EXISTS topic (
+    await db_handle.execute("""
+        CREATE TABLE IF NOT EXISTS channel (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            discussion_id INTEGER UNIQUE NOT NULL,
-            title TEXT
+            name TEXT UNIQUE NOT NULL
         )
     """)
 
-    await db.execute("""
+    await db_handle.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            discussion_id INTEGER,
+            chat_id INTEGER,
             message_id INTEGER,
             user_id INTEGER,
             date TEXT,
             text TEXT,
+            channel_id INTEGER,
 
-            UNIQUE (discussion_id, message_id),
+            UNIQUE (chat_id, message_id),
             FOREIGN KEY(user_id) REFERENCES users(id),
-            FOREIGN KEY(discussion_id) REFERENCES topic(discussion_id)
+            FOREIGN KEY(chat_id) REFERENCES channel(id)
         )
     """)
 
-    await db.commit()
+    await db_handle.execute("""
+        INSERT OR IGNORE INTO channel (name)
+        VALUES (?)
+        """,
+        CHANNELS
+    )
+
+    await db_handle.commit()

@@ -1,17 +1,18 @@
 
-async def save_message(db, discussion_id, msg, user_id):
+async def save_message(db, chat_id, msg, user_id, channel_id):
     await db.execute(
         """
         INSERT OR IGNORE INTO messages
-        (discussion_id, message_id, user_id, date, text)
-        VALUES (?, ?, ?, ?, ?)
+        (chat_id, message_id, user_id, date, text, channel_id)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
-            discussion_id,
+            chat_id,
             msg["message_id"],
             user_id,
             msg["date"],
             msg["text"],
+            channel_id,
         )
     )
 async def upsert_user(db, tg_id: int, username: str | None) -> int:
@@ -35,21 +36,3 @@ async def get_user_id(db, tg_id: int) -> int | None:
     ) as cursor:
         row = await cursor.fetchone()
         return row[0] if row else None
-
-async def upsert_topic(
-    db,
-    discussion_id: int,
-    title: str | None
-) -> int:
-    async with db.execute(
-        """
-        INSERT INTO topic (discussion_id, title)
-        VALUES (?, ?)
-        ON CONFLICT(discussion_id) DO UPDATE SET
-            title = excluded.title
-        RETURNING id
-        """,
-        (discussion_id, title)
-    ) as cursor:
-        row = await cursor.fetchone()
-        return row[0]

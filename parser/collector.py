@@ -1,5 +1,5 @@
 from parser.telegram import fetch_messages, get_client
-from parser.storage import upsert_user, save_message, upsert_topic
+from parser.storage import upsert_user, save_message
 from parser.logger import get_logger
 from parser.database import get_db, init_db
 from config import CHANNELS
@@ -15,16 +15,9 @@ async def collect_channel(tg_client, db_handle, channel_username: str):
         logger.warning(f"Channel {channel_username} has no linked discussion")
         return
 
-    discussion_id = channel.linked_chat.id
-    topic_title = channel.title
+    chat_id = channel.linked_chat.id
 
-    await upsert_topic(
-        db_handle,
-        discussion_id=discussion_id,
-        title=topic_title
-    )
-
-    async for msg in fetch_messages(tg_client, discussion_id):
+    async for msg in fetch_messages(tg_client, chat_id):
         user_id = await upsert_user(
             db_handle,
             tg_id=msg["tg_id"],
@@ -33,9 +26,10 @@ async def collect_channel(tg_client, db_handle, channel_username: str):
 
         await save_message(
             db_handle,
-            discussion_id=discussion_id,
+            chat_id=chat_id,
             msg=msg,
-            user_id=user_id
+            user_id=user_id,
+            channel_id=channel_username
         )
 
     await db_handle.commit()
@@ -53,9 +47,8 @@ async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
 
         users_count = await count("users")
         messages_count = await count("messages")
-        topics_count = await count("topic")
 
-    return users_count, messages_count, topics_count
+    return users_count, messages_count
 
 
 
@@ -75,11 +68,11 @@ async def collect_db(db_path: Path):
     async with tg_client:
         for channel in channels:
 
-            users_before, messages_before, topics_before = await get_db_stats(db_path)
+            users_before, messages_before = await get_db_stats(db_path)
 
             logger.info(
                 f"[{channel}] BEFORE → users={users_before}, "
-                f"messages={messages_before}, topics={topics_before}"
+                f"messages={messages_before}"
             )
 
             db_handle = await get_db(db_path)
@@ -88,12 +81,11 @@ async def collect_db(db_path: Path):
             finally:
                 await db_handle.close()
 
-            users_after, messages_after, topics_after = await get_db_stats(db_path)
+            users_after, messages_after = await get_db_stats(db_path)
 
             logger.info(
                 f"[{channel}] AFTER  → users={users_after} (+{users_after - users_before}), "
-                f"messages={messages_after} (+{messages_after - messages_before}), "
-                f"topics={topics_after} (+{topics_after - topics_before})"
+                f"messages={messages_after} (+{messages_after - messages_before})"
             )
 
         logger.info("Done")
