@@ -1,7 +1,7 @@
 import asyncio
 from parser.collector import collect_db
 from parser.analytics import get_haters_from_db, print_user_messages, get_user_messages_from_db
-from parser.utils import parse_channels, parse_args
+from parser.utils import parse_args
 from parser.logger import get_logger
 from config import CHANNELS
 from parser import analytics
@@ -15,7 +15,8 @@ async def main():
         return
 
     if args.mode == "haters":
-        channels = parse_channels(CHANNELS)
+
+        channels = CHANNELS
         hate_words = ["рудуа"]
 
         for channel in channels:

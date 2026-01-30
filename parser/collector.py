@@ -1,11 +1,11 @@
 from parser.telegram import fetch_messages, get_client
 from parser.storage import upsert_user, save_message, upsert_topic
 from parser.logger import get_logger
-from parser.utils import parse_channels, db_path_for_channel
+from parser.utils import db_path_for_channel
 from parser.database import get_db, init_db
 from config import CHANNELS
 import aiosqlite
-
+from pathlib import Path
 
 async def collect_channel(tg_client, db, channel_username: str):
     logger = get_logger("main")
@@ -42,7 +42,7 @@ async def collect_channel(tg_client, db, channel_username: str):
     await db.commit()
 
 
-async def get_db_stats(db_path: str) -> tuple[int, int, int]:
+async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
     async with aiosqlite.connect(db_path) as db:
 
         async def count(table: str) -> int:
@@ -61,7 +61,7 @@ async def get_db_stats(db_path: str) -> tuple[int, int, int]:
 
 
 async def collect_db():
-    channels = parse_channels(CHANNELS)
+    channels = CHANNELS
     if not channels:
         raise RuntimeError("CHANNELS are empty")
 

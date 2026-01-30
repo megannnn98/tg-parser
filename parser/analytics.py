@@ -1,9 +1,10 @@
 import aiosqlite
 import re
 from typing import Optional
+from pathlib import Path
 
 async def get_user_messages_from_db(
-    db_path: str,
+    db_path: Path,
     tg_id: int
 ) -> list[str]:
     async with aiosqlite.connect(db_path) as db:
@@ -20,7 +21,7 @@ async def get_user_messages_from_db(
             return [row[0] async for row in cursor]
 
 
-async def get_users_from_db(db_path: str) -> list[int]:
+async def get_users_from_db(db_path: Path) -> list[int]:
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
             "SELECT tg_id FROM users"
@@ -29,7 +30,7 @@ async def get_users_from_db(db_path: str) -> list[int]:
 
 
 async def get_username_by_tg_id(
-    db_path: str,
+    db_path: Path,
     tg_id: int
 ) -> Optional[str]:
     async with aiosqlite.connect(db_path) as db:
@@ -42,7 +43,7 @@ async def get_username_by_tg_id(
 
 
 async def get_haters_from_db(
-    db_path: str,
+    db_path: Path,
     hate_words: list[str]
 ) -> list[tuple[int, str | None, int]]:
     users = await get_users_from_db(db_path)
@@ -73,7 +74,7 @@ async def get_haters_from_db(
 
 
 
-async def print_user_messages(db_path: str, tg_id: int):
+async def print_user_messages(db_path: Path, tg_id: int):
     messages = await get_user_messages_from_db(db_path, tg_id)
     username = await get_username_by_tg_id(db_path, tg_id)
 
