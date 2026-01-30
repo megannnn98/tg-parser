@@ -1,0 +1,227 @@
+{
+    "_": "Message",
+    "id": 1130021,
+    "from_user": {
+        "_": "User",
+        "id": 553147242,
+        "is_self": false,
+        "is_contact": false,
+        "is_mutual_contact": false,
+        "is_deleted": false,
+        "is_bot": true,
+        "is_verified": false,
+        "is_restricted": false,
+        "is_scam": false,
+        "is_fake": false,
+        "is_support": false,
+        "is_premium": false,
+        "first_name": "ChatKeeperBot",
+        "username": "ChatKeeperBot",
+        "dc_id": 2,
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADAgADvqcxG2pb-CAAEAIAA2pb-CAABKHrkEPCRnERAAQeBA",
+            "small_photo_unique_id": "AgADvqcxG2pb-CA",
+            "big_file_id": "AQADAgADvqcxG2pb-CAAEAMAA2pb-CAABKHrkEPCRnERAAQeBA",
+            "big_photo_unique_id": "AgADvqcxG2pb-CA"
+        }
+    },
+    "date": "2026-01-30 10:18:19",
+    "chat": {
+        "_": "Chat",
+        "id": -1001640708647,
+        "type": "ChatType.SUPERGROUP",
+        "is_verified": false,
+        "is_restricted": false,
+        "is_creator": false,
+        "is_scam": false,
+        "is_fake": false,
+        "title": "Клим ZукOV official",
+        "username": "semin_official",
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADAgADdOQxG2hm6UgAEAIAA9m1j8kW____uZathQoYRjUABB4E",
+            "small_photo_unique_id": "AgADdOQxG2hm6Ug",
+            "big_file_id": "AQADAgADdOQxG2hm6UgAEAMAA9m1j8kW____uZathQoYRjUABB4E",
+            "big_photo_unique_id": "AgADdOQxG2hm6Ug"
+        },
+        "dc_id": 2,
+        "has_protected_content": false,
+        "permissions": {
+            "_": "ChatPermissions",
+            "can_send_messages": true,
+            "can_send_media_messages": true,
+            "can_send_other_messages": true,
+            "can_send_polls": true,
+            "can_add_web_page_previews": false,
+            "can_change_info": false,
+            "can_invite_users": false,
+            "can_pin_messages": false
+        }
+    },
+    "mentioned": false,
+    "scheduled": false,
+    "from_scheduled": false,
+    "has_protected_content": false,
+    "text": "Добро пожаловать в группу Клим ZукOV official.\n\n\nНе нужно быть гением, чтобы много зарабатывать. Вокруг полно небольших бизнес-идей, а лучшие из них в @dengi",
+    "entities": [
+        {
+            "_": "MessageEntity",
+            "type": "MessageEntityType.TEXT_LINK",
+            "offset": 151,
+            "length": 6,
+            "url": "https://t.me/+Y3KEJVDOqFwwNjNi"
+        }
+    ],
+    "outgoing": false,
+    "reply_markup": {
+        "_": "InlineKeyboardMarkup",
+        "inline_keyboard": [
+            [
+                {
+                    "_": "InlineKeyboardButton",
+                    "text": "антибот проверка >>КАПТЧА<<",
+                    "callback_data": "vudcAv4ea9zVaVKFKWIK"
+                }
+            ]
+        ]
+    }
+}
+{
+    "_": "Message",
+    "id": 1129989,
+    "from_user": {
+        "_": "User",
+        "id": 8472293687,
+        "is_self": false,
+        "is_contact": false,
+        "is_mutual_contact": false,
+        "is_deleted": false,
+        "is_bot": false,
+        "is_verified": false,
+        "is_restricted": false,
+        "is_scam": false,
+        "is_fake": false,
+        "is_support": false,
+        "is_premium": false,
+        "first_name": "Kelmomas",
+        "status": "UserStatus.RECENTLY"
+    },
+    "date": "2026-01-30 09:23:01",
+    "chat": {
+        "_": "Chat",
+        "id": -1001640708647,
+        "type": "ChatType.SUPERGROUP",
+        "is_verified": false,
+        "is_restricted": false,
+        "is_creator": false,
+        "is_scam": false,
+        "is_fake": false,
+        "title": "Клим ZукOV official",
+        "username": "semin_official",
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADAgADdOQxG2hm6UgAEAIAA9m1j8kW____uZathQoYRjUABB4E",
+            "small_photo_unique_id": "AgADdOQxG2hm6Ug",
+            "big_file_id": "AQADAgADdOQxG2hm6UgAEAMAA9m1j8kW____uZathQoYRjUABB4E",
+            "big_photo_unique_id": "AgADdOQxG2hm6Ug"
+        },
+        "dc_id": 2,
+        "has_protected_content": false,
+        "permissions": {
+            "_": "ChatPermissions",
+            "can_send_messages": true,
+            "can_send_media_messages": true,
+            "can_send_other_messages": true,
+            "can_send_polls": true,
+            "can_add_web_page_previews": false,
+            "can_change_info": false,
+            "can_invite_users": false,
+            "can_pin_messages": false
+        }
+    },
+    "reply_to_message_id": 1129575,
+    "mentioned": false,
+    "scheduled": false,
+    "from_scheduled": false,
+    "has_protected_content": false,
+    "text": "Ну и в чем он не прав?",
+    "outgoing": false
+}
+{
+    "_": "Message",
+    "id": 1129962,
+    "from_user": {
+        "_": "User",
+        "id": 8555364450,
+        "is_self": false,
+        "is_contact": false,
+        "is_mutual_contact": false,
+        "is_deleted": false,
+        "is_bot": false,
+        "is_verified": false,
+        "is_restricted": false,
+        "is_scam": false,
+        "is_fake": false,
+        "is_support": false,
+        "is_premium": true,
+        "first_name": "Анастасия 🇷🇺",
+        "status": "UserStatus.RECENTLY",
+        "username": "anastasia_bokocha",
+        "dc_id": 1,
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADAQADxgtrG4ES6UcAEAIAA2KA8P0BAANXV0AdsR6AngAEHgQ",
+            "small_photo_unique_id": "AgADxgtrG4ES6Uc",
+            "big_file_id": "AQADAQADxgtrG4ES6UcAEAMAA2KA8P0BAANXV0AdsR6AngAEHgQ",
+            "big_photo_unique_id": "AgADxgtrG4ES6Uc"
+        }
+    },
+    "date": "2026-01-30 08:36:42",
+    "chat": {
+        "_": "Chat",
+        "id": -1001640708647,
+        "type": "ChatType.SUPERGROUP",
+        "is_verified": false,
+        "is_restricted": false,
+        "is_creator": false,
+        "is_scam": false,
+        "is_fake": false,
+        "title": "Клим ZукOV official",
+        "username": "semin_official",
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADAgADdOQxG2hm6UgAEAIAA9m1j8kW____uZathQoYRjUABB4E",
+            "small_photo_unique_id": "AgADdOQxG2hm6Ug",
+            "big_file_id": "AQADAgADdOQxG2hm6UgAEAMAA9m1j8kW____uZathQoYRjUABB4E",
+            "big_photo_unique_id": "AgADdOQxG2hm6Ug"
+        },
+        "dc_id": 2,
+        "has_protected_content": false,
+        "permissions": {
+            "_": "ChatPermissions",
+            "can_send_messages": true,
+            "can_send_media_messages": true,
+            "can_send_other_messages": true,
+            "can_send_polls": true,
+            "can_add_web_page_previews": false,
+            "can_change_info": false,
+            "can_invite_users": false,
+            "can_pin_messages": false
+        }
+    },
+    "mentioned": false,
+    "scheduled": false,
+    "from_scheduled": false,
+    "has_protected_content": false,
+    "text": "Πолнoe внeсeниe в бaзy ΓИБДД \nΚaтeгории: Α, В, C, D, Е, Μ, Τb, Τm и\nдругиe\nΟфоpмлeниe бeз эκзaмeнοв и\naвтoшκoлы \nВоccтaнοвлeние после лишeния \nЛюбыe пpовepκи пoслe  ИЗΓOTОВЛEΗИЯ провepяютcя нa oфициальнoм caйтe ΓИБДД",
+    "entities": [
+        {
+            "_": "MessageEntity",
+            "type": "MessageEntityType.BOLD",
+            "offset": 0,
+            "length": 216
+        }
+    ],
+    "outgoing": false
+}

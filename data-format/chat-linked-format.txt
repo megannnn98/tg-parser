@@ -1,0 +1,203 @@
+{
+    "_": "Chat",
+    "id": -1001640708647,
+    "type": "ChatType.SUPERGROUP",
+    "is_verified": false,
+    "is_restricted": false,
+    "is_creator": false,
+    "is_scam": false,
+    "is_fake": false,
+    "title": "Клим ZукOV official",
+    "username": "semin_official",
+    "photo": {
+        "_": "ChatPhoto",
+        "small_file_id": "AQADAgADdOQxG2hm6UgAEAIAA9m1j8kW____uZathQoYRjUABB4E",
+        "small_photo_unique_id": "AgADdOQxG2hm6Ug",
+        "big_file_id": "AQADAgADdOQxG2hm6UgAEAMAA9m1j8kW____uZathQoYRjUABB4E",
+        "big_photo_unique_id": "AgADdOQxG2hm6Ug"
+    },
+    "description": "Бот для обратной связи @Rudoymailbot\nПравила чата и вопросы, связанные с баном: https://t.me/ru_doy/2295\nНе пропустите сообщение чатбота при подписке.\nПожаловаться на сообщение - реплай с текстом /report или !report",
+    "dc_id": 2,
+    "has_protected_content": false,
+    "pinned_message": {
+        "_": "Message",
+        "id": 1129575,
+        "sender_chat": {
+            "_": "Chat",
+            "id": -1001753731564,
+            "type": "ChatType.CHANNEL",
+            "is_verified": false,
+            "is_restricted": false,
+            "is_creator": false,
+            "is_scam": false,
+            "is_fake": false,
+            "title": "Рудой",
+            "username": "ru_doy",
+            "photo": {
+                "_": "ChatPhoto",
+                "small_file_id": "AQADAgAD088xGy6-6EoAEAIAAxQe08IW____Ese4L7dgPRUABB4E",
+                "small_photo_unique_id": "AgAD088xGy6-6Eo",
+                "big_file_id": "AQADAgAD088xGy6-6EoAEAMAAxQe08IW____Ese4L7dgPRUABB4E",
+                "big_photo_unique_id": "AgAD088xGy6-6Eo"
+            },
+            "dc_id": 2,
+            "has_protected_content": false
+        },
+        "date": "2026-01-29 17:12:02",
+        "chat": {
+            "_": "Chat",
+            "id": -1001640708647,
+            "type": "ChatType.SUPERGROUP",
+            "is_verified": false,
+            "is_restricted": false,
+            "is_creator": false,
+            "is_scam": false,
+            "is_fake": false,
+            "title": "Клим ZукOV official",
+            "username": "semin_official",
+            "photo": {
+                "_": "ChatPhoto",
+                "small_file_id": "AQADAgADdOQxG2hm6UgAEAIAA9m1j8kW____uZathQoYRjUABB4E",
+                "small_photo_unique_id": "AgADdOQxG2hm6Ug",
+                "big_file_id": "AQADAgADdOQxG2hm6UgAEAMAA9m1j8kW____uZathQoYRjUABB4E",
+                "big_photo_unique_id": "AgADdOQxG2hm6Ug"
+            },
+            "dc_id": 2,
+            "has_protected_content": false,
+            "permissions": {
+                "_": "ChatPermissions",
+                "can_send_messages": true,
+                "can_send_media_messages": true,
+                "can_send_other_messages": true,
+                "can_send_polls": true,
+                "can_add_web_page_previews": false,
+                "can_change_info": false,
+                "can_invite_users": false,
+                "can_pin_messages": false
+            }
+        },
+        "forward_from_chat": {
+            "_": "Chat",
+            "id": -1001753731564,
+            "type": "ChatType.CHANNEL",
+            "is_verified": false,
+            "is_restricted": false,
+            "is_creator": false,
+            "is_scam": false,
+            "is_fake": false,
+            "title": "Рудой",
+            "username": "ru_doy",
+            "photo": {
+                "_": "ChatPhoto",
+                "small_file_id": "AQADAgAD088xGy6-6EoAEAIAAxQe08IW____Ese4L7dgPRUABB4E",
+                "small_photo_unique_id": "AgAD088xGy6-6Eo",
+                "big_file_id": "AQADAgAD088xGy6-6EoAEAMAAxQe08IW____Ese4L7dgPRUABB4E",
+                "big_photo_unique_id": "AgAD088xGy6-6Eo"
+            },
+            "dc_id": 2,
+            "has_protected_content": false
+        },
+        "forward_from_message_id": 6108,
+        "forward_date": "2026-01-29 17:11:59",
+        "mentioned": false,
+        "scheduled": false,
+        "from_scheduled": false,
+        "media": "MessageMediaType.PHOTO",
+        "edit_date": "2026-01-29 17:12:21",
+        "has_protected_content": false,
+        "has_media_spoiler": false,
+        "caption_entities": [
+            {
+                "_": "MessageEntity",
+                "type": "MessageEntityType.CUSTOM_EMOJI",
+                "offset": 0,
+                "length": 2,
+                "custom_emoji_id": 5447246917744478110
+            },
+            {
+                "_": "MessageEntity",
+                "type": "MessageEntityType.BOLD",
+                "offset": 2,
+                "length": 7
+            }
+        ],
+        "photo": {
+            "_": "Photo",
+            "file_id": "AgACAgIAAx0CYcs6JwABETxnaXyCOHCMH0RzOj7Wkv_bsH0mi00AAsUSaxt7s9lLhFRHC-U6xF4ACAEAAwIAA3kABx4E",
+            "file_unique_id": "AgADxRJrG3uz2Us",
+            "width": 1080,
+            "height": 696,
+            "file_size": 91877,
+            "date": "2026-01-29 17:11:11",
+            "thumbs": [
+                {
+                    "_": "Thumbnail",
+                    "file_id": "AgACAgIAAx0CYcs6JwABETxnaXyCOHCMH0RzOj7Wkv_bsH0mi00AAsUSaxt7s9lLhFRHC-U6xF4ACAEAAwIAA20ABx4E",
+                    "file_unique_id": "AgADxRJrG3uz2Us",
+                    "width": 320,
+                    "height": 206,
+                    "file_size": 22285
+                }
+            ]
+        },
+        "caption": "☠️Светов \n\n18+ НАСТОЯЩИЙ МАТЕРИАЛ (ИНФОРМАЦИЯ) ПРОИЗВЕДЕН, РАСПРОСТРАНЕН И (ИЛИ) НАПРАВЛЕН ИНОСТРАННЫМ АГЕНТОМ РУДЫМ АНДРЕЕМ ВЛАДИМИРОВИЧЕМ ЛИБО КАСАЕТСЯ ДЕЯТЕЛЬНОСТИ ИНОСТРАННОГО АГЕНТА РУДОГО АНДРЕЯ ВЛАДИМИРОВИЧА\n\nТут комментировать - только портить.",
+        "views": 4539,
+        "forwards": 90,
+        "outgoing": false
+    },
+    "sticker_set_name": "vestnikburi",
+    "can_set_sticker_set": false,
+    "members_count": 6116,
+    "permissions": {
+        "_": "ChatPermissions",
+        "can_send_messages": true,
+        "can_send_media_messages": true,
+        "can_send_other_messages": true,
+        "can_send_polls": true,
+        "can_add_web_page_previews": false,
+        "can_change_info": false,
+        "can_invite_users": false,
+        "can_pin_messages": false
+    },
+    "linked_chat": {
+        "_": "Chat",
+        "id": -1001753731564,
+        "type": "ChatType.CHANNEL",
+        "is_verified": false,
+        "is_restricted": false,
+        "is_creator": false,
+        "is_scam": false,
+        "is_fake": false,
+        "title": "Рудой",
+        "username": "ru_doy",
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADAgAD088xGy6-6EoAEAIAAxQe08IW____Ese4L7dgPRUABB4E",
+            "small_photo_unique_id": "AgAD088xGy6-6Eo",
+            "big_file_id": "AQADAgAD088xGy6-6EoAEAMAAxQe08IW____Ese4L7dgPRUABB4E",
+            "big_photo_unique_id": "AgAD088xGy6-6Eo"
+        },
+        "dc_id": 2,
+        "has_protected_content": false
+    },
+    "send_as_chat": {
+        "_": "Chat",
+        "id": 279460418,
+        "type": "ChatType.PRIVATE",
+        "is_verified": false,
+        "is_restricted": false,
+        "is_scam": false,
+        "is_fake": false,
+        "is_support": false,
+        "username": "megan_xls",
+        "first_name": "M",
+        "photo": {
+            "_": "ChatPhoto",
+            "small_file_id": "AQADAgAD_6cxG0I6qBAAEAIAA0I6qBAABA5XBmM-yEPRAAQeBA",
+            "small_photo_unique_id": "AgAD_6cxG0I6qBA",
+            "big_file_id": "AQADAgAD_6cxG0I6qBAAEAMAA0I6qBAABA5XBmM-yEPRAAQeBA",
+            "big_photo_unique_id": "AgAD_6cxG0I6qBA"
+        },
+        "dc_id": 2
+    }
+}
