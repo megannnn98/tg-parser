@@ -5,40 +5,45 @@ from parser.utils import parse_args
 from parser.logger import get_logger
 from config import CHANNELS, DB_PATH
 from parser import analytics
+from parser.database import get_db, init_db
 
 async def main():
     args = parse_args()
     logger = get_logger("main")
     db_path = DB_PATH
+    db_handle = await get_db(DB_PATH)
+    try:
+        await init_db(db_handle, CHANNELS)
+    finally:
+        await db_handle.close()
 
     if args.mode == "collect":
-        await collect_db(db_path)
-        return
+        await collect_db(db_handle)
+    elif args.mode == "haters":
 
-    # if args.mode == "haters":
+        channels = CHANNELS
+        hate_words = ["рудуа"]
 
-    #     channels = CHANNELS
-    #     hate_words = ["рудуа"]
+        for channel in channels:
 
-    #     for channel in channels:
+            haters = await get_haters_from_db(db_path, hate_words)
 
-    #         haters = await get_haters_from_db(db_path, hate_words)
+            if not haters:
+                continue
 
-    #         if not haters:
-    #             continue
+            print(f"Канал {channel}")
+            logger.info(f"Processing {channel} ({db_path})")
 
-    #         print(f"Канал {channel}")
-    #         logger.info(f"Processing {channel} ({db_path})")
+            haters = await get_haters_from_db(db_path, hate_words)
 
-    #         haters = await get_haters_from_db(db_path, hate_words)
-
-    #         for tg_id, username, count in haters:
-    #             name = username or f"id:{tg_id}"
-    #             all_msgs = await get_user_messages_from_db(db_path, tg_id)
-    #             num = len(all_msgs)
-    #             print(f"    {name}: {count}({num}) -> {int(round(count / num, 2) * 100)}%")
-    #         print("")
-
+            for tg_id, username, count in haters:
+                name = username or f"id:{tg_id}"
+                all_msgs = await get_user_messages_from_db(db_path, tg_id)
+                num = len(all_msgs)
+                print(f"    {name}: {count}({num}) -> {int(round(count / num, 2) * 100)}%")
+            print("")
+    else:
+        logger.error("Unknown mode: %s", args.mode)
     return
 
 if __name__ == "__main__":

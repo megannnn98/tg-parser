@@ -35,8 +35,8 @@ async def collect_channel(tg_client, db_handle, channel_username: str):
     await db_handle.commit()
 
 
-async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
-    async with aiosqlite.connect(db_path) as db_handle:
+async def get_db_stats(db_handle: aiosqlite.Connection) -> tuple[int, int, int]:
+    async with aiosqlite.connect(db_handle) as db_handle:
 
         async def count(table: str) -> int:
             try:
@@ -52,36 +52,31 @@ async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
 
 
 
-async def collect_db(db_path: Path):
+async def collect_db(db_handle: aiosqlite.Connection):
     channels = CHANNELS
     if not channels:
         raise RuntimeError("CHANNELS are empty")
 
     tg_client = get_client()
     logger = get_logger("main")
-    db_handle = await get_db(db_path)
-    try:
-        await init_db(db_handle)
-    finally:
-        await db_handle.close()
+
 
     async with tg_client:
         for channel in channels:
 
-            users_before, messages_before = await get_db_stats(db_path)
+            users_before, messages_before = await get_db_stats(db_handle)
 
             logger.info(
                 f"[{channel}] BEFORE → users={users_before}, "
                 f"messages={messages_before}"
             )
 
-            db_handle = await get_db(db_path)
             try:
                 await collect_channel(tg_client, db_handle, channel)
             finally:
                 await db_handle.close()
 
-            users_after, messages_after = await get_db_stats(db_path)
+            users_after, messages_after = await get_db_stats(db_handle)
 
             logger.info(
                 f"[{channel}] AFTER  → users={users_after} (+{users_after - users_before}), "

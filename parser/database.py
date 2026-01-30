@@ -1,12 +1,11 @@
 import aiosqlite
 from pathlib import Path
-from config import DB_PATH, CHANNELS
 
 async def get_db(db_path: Path):
     db_path.parent.mkdir(parents=True, exist_ok=True)
     return await aiosqlite.connect(str(db_path))
 
-async def init_db(db_handle):
+async def init_db(db_handle, channels: list[str]):
     await db_handle.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +41,7 @@ async def init_db(db_handle):
         INSERT OR IGNORE INTO channel (name)
         VALUES (?)
         """,
-        CHANNELS
+        channels
     )
 
     await db_handle.commit()
