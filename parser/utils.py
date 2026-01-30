@@ -7,10 +7,6 @@ def sanitize_channel_name(name: str) -> str:
     name = name.strip().lstrip("@").lower()
     return re.sub(r"[^a-z0-9_]", "_", name)
 
-def db_path_for_channel(channel: str) -> Path:
-    safe = sanitize_channel_name(channel)
-    return Path(DATA_DIR) / f"{safe}.db"
-
 def list_channels() -> list[str]:
     data_dir = Path(DATA_DIR)
     if not data_dir.exists():

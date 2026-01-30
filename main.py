@@ -3,15 +3,16 @@ from parser.collector import collect_db
 from parser.analytics import get_haters_from_db, print_user_messages, get_user_messages_from_db
 from parser.utils import parse_args
 from parser.logger import get_logger
-from config import CHANNELS
+from config import CHANNELS, DB_PATH
 from parser import analytics
 
 async def main():
     args = parse_args()
     logger = get_logger("main")
+    db_path = DB_PATH
 
     if args.mode == "collect":
-        await collect_db()
+        await collect_db(db_path)
         return
 
     if args.mode == "haters":
@@ -20,7 +21,6 @@ async def main():
         hate_words = ["рудуа"]
 
         for channel in channels:
-            db_path = f"data/{channel}.db"
 
             haters = await get_haters_from_db(db_path, hate_words)
 

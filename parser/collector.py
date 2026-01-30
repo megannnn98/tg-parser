@@ -1,13 +1,12 @@
 from parser.telegram import fetch_messages, get_client
 from parser.storage import upsert_user, save_message, upsert_topic
 from parser.logger import get_logger
-from parser.utils import db_path_for_channel
 from parser.database import get_db, init_db
 from config import CHANNELS
 import aiosqlite
 from pathlib import Path
 
-async def collect_channel(tg_client, db, channel_username: str):
+async def collect_channel(tg_client, db_handle, channel_username: str):
     logger = get_logger("main")
 
     channel = await tg_client.get_chat(channel_username)
@@ -20,34 +19,34 @@ async def collect_channel(tg_client, db, channel_username: str):
     topic_title = channel.title
 
     await upsert_topic(
-        db,
+        db_handle,
         discussion_id=discussion_id,
         title=topic_title
     )
 
     async for msg in fetch_messages(tg_client, discussion_id):
         user_id = await upsert_user(
-            db,
+            db_handle,
             tg_id=msg["tg_id"],
             username=msg["username"]
         )
 
         await save_message(
-            db,
+            db_handle,
             discussion_id=discussion_id,
             msg=msg,
             user_id=user_id
         )
 
-    await db.commit()
+    await db_handle.commit()
 
 
 async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
-    async with aiosqlite.connect(db_path) as db:
+    async with aiosqlite.connect(db_path) as db_handle:
 
         async def count(table: str) -> int:
             try:
-                async with db.execute(f"SELECT COUNT(*) FROM {table}") as cur:
+                async with db_handle.execute(f"SELECT COUNT(*) FROM {table}") as cur:
                     return (await cur.fetchone())[0]
             except aiosqlite.OperationalError:
                 return 0
@@ -60,26 +59,22 @@ async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
 
 
 
-async def collect_db():
+async def collect_db(db_path: Path):
     channels = CHANNELS
     if not channels:
         raise RuntimeError("CHANNELS are empty")
 
     tg_client = get_client()
     logger = get_logger("main")
+    db_handle = await get_db(db_path)
+    try:
+        await init_db(db_handle)
+    finally:
+        await db_handle.close()
 
     async with tg_client:
         for channel in channels:
-            db_path = db_path_for_channel(channel)
 
-            # ⬇️ СНАЧАЛА открываем БД и создаём схему
-            db = await get_db(db_path)
-            try:
-                await init_db(db)
-            finally:
-                await db.close()
-
-            # ⬇️ ТЕПЕРЬ таблицы гарантированно есть
             users_before, messages_before, topics_before = await get_db_stats(db_path)
 
             logger.info(
@@ -87,11 +82,11 @@ async def collect_db():
                 f"messages={messages_before}, topics={topics_before}"
             )
 
-            db = await get_db(db_path)
+            db_handle = await get_db(db_path)
             try:
-                await collect_channel(tg_client, db, channel)
+                await collect_channel(tg_client, db_handle, channel)
             finally:
-                await db.close()
+                await db_handle.close()
 
             users_after, messages_after, topics_after = await get_db_stats(db_path)
 

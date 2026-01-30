@@ -12,3 +12,4 @@ API_HASH = os.getenv("API_HASH")
 CHANNELS = json.loads(Path("channels.json").read_text())
 DATA_DIR = os.getenv("DATA_DIR", "data")
 LIMIT = int(os.getenv("LIMIT", 1000))
+DB_PATH = Path(DATA_DIR) / "main.db"
