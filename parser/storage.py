@@ -16,14 +16,6 @@ async def init_db(db):
     """)
 
     await db.execute("""
-        CREATE TABLE IF NOT EXISTS topic (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            discussion_id INTEGER UNIQUE NOT NULL,
-            title TEXT
-        )
-    """)
-
-    await db.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             discussion_id INTEGER,
@@ -33,8 +25,7 @@ async def init_db(db):
             text TEXT,
 
             UNIQUE (discussion_id, message_id),
-            FOREIGN KEY(user_id) REFERENCES users(id),
-            FOREIGN KEY(discussion_id) REFERENCES topic(discussion_id)
+            FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
 
@@ -76,21 +67,3 @@ async def get_user_id(db, tg_id: int) -> int | None:
     ) as cursor:
         row = await cursor.fetchone()
         return row[0] if row else None
-
-async def upsert_topic(
-    db,
-    discussion_id: int,
-    title: str | None
-) -> int:
-    async with db.execute(
-        """
-        INSERT INTO topic (discussion_id, title)
-        VALUES (?, ?)
-        ON CONFLICT(discussion_id) DO UPDATE SET
-            title = excluded.title
-        RETURNING id
-        """,
-        (discussion_id, title)
-    ) as cursor:
-        row = await cursor.fetchone()
-        return row[0]

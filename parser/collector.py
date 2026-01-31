@@ -1,5 +1,5 @@
 from parser.telegram import fetch_messages, get_client
-from parser.storage import upsert_user, save_message, upsert_topic, get_db, init_db
+from parser.storage import upsert_user, save_message, get_db, init_db
 from parser.logger import get_logger
 from parser.utils import db_path_for_channel
 from config import CHANNELS
@@ -16,13 +16,6 @@ async def collect_channel(tg_client, db, channel_username: str):
         return
 
     discussion_id = channel.linked_chat.id
-    topic_title = channel.title
-
-    await upsert_topic(
-        db,
-        discussion_id=discussion_id,
-        title=topic_title
-    )
 
     async for msg in fetch_messages(tg_client, discussion_id):
         user_id = await upsert_user(
@@ -53,9 +46,8 @@ async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
 
         users_count = await count("users")
         messages_count = await count("messages")
-        topics_count = await count("topic")
 
-    return users_count, messages_count, topics_count
+    return users_count, messages_count
 
 
 
@@ -79,11 +71,11 @@ async def collect_db():
                 await db.close()
 
             # ⬇️ ТЕПЕРЬ таблицы гарантированно есть
-            users_before, messages_before, topics_before = await get_db_stats(db_path)
+            users_before, messages_before = await get_db_stats(db_path)
 
             logger.info(
                 f"[{channel}] BEFORE → users={users_before}, "
-                f"messages={messages_before}, topics={topics_before}"
+                f"messages={messages_before}"
             )
 
             db = await get_db(db_path)
@@ -92,12 +84,11 @@ async def collect_db():
             finally:
                 await db.close()
 
-            users_after, messages_after, topics_after = await get_db_stats(db_path)
+            users_after, messages_after = await get_db_stats(db_path)
 
             logger.info(
                 f"[{channel}] AFTER  → users={users_after} (+{users_after - users_before}), "
-                f"messages={messages_after} (+{messages_after - messages_before}), "
-                f"topics={topics_after} (+{topics_after - topics_before})"
+                f"messages={messages_after} (+{messages_after - messages_before})"
             )
 
         logger.info("Done")
