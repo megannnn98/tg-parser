@@ -12,7 +12,7 @@ async def get_user_messages_from_db(
             """
             SELECT m.text
             FROM messages m
-            JOIN users u ON u.id = m.user_id
+            JOIN users u ON u.tg_id = m.user
             WHERE u.tg_id = ?
             ORDER BY m.id
             """,
