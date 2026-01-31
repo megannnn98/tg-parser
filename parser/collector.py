@@ -1,8 +1,7 @@
 from parser.telegram import fetch_messages, get_client
-from parser.storage import upsert_user, save_message, upsert_topic
+from parser.storage import upsert_user, save_message, upsert_topic, get_db, init_db
 from parser.logger import get_logger
 from parser.utils import db_path_for_channel
-from parser.database import get_db, init_db
 from config import CHANNELS
 import aiosqlite
 from pathlib import Path
