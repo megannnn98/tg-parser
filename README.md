@@ -13,3 +13,18 @@ uvicorn web.app:app --reload
 ```
 http://127.0.0.1:8000/channels
 ```
+
+## Channels to scan
+```
+  ru_doy
+  d_tyazhkun
+  communistvrn
+  vihod_est
+  lenin_crew
+  rev01ution_red
+  spichka_media
+  egoryakovleff
+  vestnikburioriginals
+  dialectic_club
+  dharmazapisi
+```

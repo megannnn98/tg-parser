@@ -1,10 +1,13 @@
 from parser.telegram import fetch_messages, get_client
-from parser.storage import upsert_user, save_message, get_db, init_db
+from parser.storage import upsert_user, upsert_channel, save_message, get_db, init_db
 from parser.logger import get_logger
 from parser.utils import db_path_for_channel
 from config import CHANNELS
-import aiosqlite
 from pathlib import Path
+from parser.measure_time import measure_time
+import aiosqlite
+import asyncio
+import parser.logger as logger
 
 async def collect_channel(tg_client, db, channel_username: str):
     logger = get_logger("collector")
@@ -18,17 +21,21 @@ async def collect_channel(tg_client, db, channel_username: str):
     chat_id = channel.linked_chat.id
 
     async for msg in fetch_messages(tg_client, chat_id):
-        user_id = await upsert_user(
+        await upsert_user(
             db,
             tg_id=msg["tg_id"],
             username=msg["username"]
         )
+        await upsert_channel(
+            db,
+            name=channel_username
+        )
 
         await save_message(
             db,
-            chat_id=chat_id,
+            msg["tg_id"],
+            channel_username,
             msg=msg,
-            user_id=user_id
         )
 
     await db.commit()
@@ -51,6 +58,48 @@ async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
 
 
 
+
+async def collect_one_channel(
+    tg_client,
+    channel: str,
+    sem: asyncio.Semaphore,
+):
+    logger = get_logger("collector")
+    db_path = db_path_for_channel(channel)
+
+    async with sem:
+        logger.info(f"[{channel}] start")
+
+        # init db
+        db = await get_db(db_path)
+        try:
+            await init_db(db)
+        finally:
+            await db.close()
+
+        users_before, messages_before = await get_db_stats(db_path)
+
+        logger.info(
+            f"[{channel}] BEFORE → users={users_before}, "
+            f"messages={messages_before}"
+        )
+
+        # collect
+        db = await get_db(db_path)
+        try:
+            await collect_channel(tg_client, db, channel)
+        finally:
+            await db.close()
+
+        users_after, messages_after = await get_db_stats(db_path)
+
+        logger.info(
+            f"[{channel}] AFTER  → users={users_after} (+{users_after - users_before}), "
+            f"messages={messages_after} (+{messages_after - messages_before})"
+        )
+
+
+@measure_time(name="collect_db")
 async def collect_db():
     channels = CHANNELS
     if not channels:
@@ -59,34 +108,16 @@ async def collect_db():
     tg_client = get_client()
     logger = get_logger("collector")
 
+    sem = asyncio.Semaphore(15)
+
     async with tg_client:
-        for channel in channels:
-            db_path = db_path_for_channel(channel)
-
-            db = await get_db(db_path)
-            try:
-                await init_db(db)
-            finally:
-                await db.close()
-
-            users_before, messages_before = await get_db_stats(db_path)
-
-            logger.info(
-                f"[{channel}] BEFORE → users={users_before}, "
-                f"messages={messages_before}"
+        tasks = [
+            asyncio.create_task(
+                collect_one_channel(tg_client, channel, sem)
             )
+            for channel in channels
+        ]
 
-            db = await get_db(db_path)
-            try:
-                await collect_channel(tg_client, db, channel)
-            finally:
-                await db.close()
+        await asyncio.gather(*tasks)
 
-            users_after, messages_after = await get_db_stats(db_path)
-
-            logger.info(
-                f"[{channel}] AFTER  → users={users_after} (+{users_after - users_before}), "
-                f"messages={messages_after} (+{messages_after - messages_before})"
-            )
-
-        logger.info("Done")
+    logger.info("Done")

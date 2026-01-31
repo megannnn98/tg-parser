@@ -17,7 +17,7 @@ async def main():
     if args.mode == "haters":
 
         channels = CHANNELS
-        hate_words = ["рудуа"]
+        hate_words = ["как"]
 
         for channel in channels:
             db_path = f"data/{channel}.db"
