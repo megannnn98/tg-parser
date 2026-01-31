@@ -18,28 +18,28 @@ async def init_db(db):
     await db.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            discussion_id INTEGER,
+            chat_id INTEGER,
             message_id INTEGER,
             user_id INTEGER,
             date TEXT,
             text TEXT,
 
-            UNIQUE (discussion_id, message_id),
+            UNIQUE (chat_id, message_id),
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
 
     await db.commit()
 
-async def save_message(db, discussion_id, msg, user_id):
+async def save_message(db, chat_id, msg, user_id):
     await db.execute(
         """
         INSERT OR IGNORE INTO messages
-        (discussion_id, message_id, user_id, date, text)
+        (chat_id, message_id, user_id, date, text)
         VALUES (?, ?, ?, ?, ?)
         """,
         (
-            discussion_id,
+            chat_id,
             msg["message_id"],
             user_id,
             msg["date"],

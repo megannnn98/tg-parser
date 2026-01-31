@@ -7,7 +7,7 @@ import aiosqlite
 from pathlib import Path
 
 async def collect_channel(tg_client, db, channel_username: str):
-    logger = get_logger("main")
+    logger = get_logger("collector")
 
     channel = await tg_client.get_chat(channel_username)
 
@@ -15,9 +15,9 @@ async def collect_channel(tg_client, db, channel_username: str):
         logger.warning(f"Channel {channel_username} has no linked discussion")
         return
 
-    discussion_id = channel.linked_chat.id
+    chat_id = channel.linked_chat.id
 
-    async for msg in fetch_messages(tg_client, discussion_id):
+    async for msg in fetch_messages(tg_client, chat_id):
         user_id = await upsert_user(
             db,
             tg_id=msg["tg_id"],
@@ -26,7 +26,7 @@ async def collect_channel(tg_client, db, channel_username: str):
 
         await save_message(
             db,
-            discussion_id=discussion_id,
+            chat_id=chat_id,
             msg=msg,
             user_id=user_id
         )
@@ -57,20 +57,18 @@ async def collect_db():
         raise RuntimeError("CHANNELS are empty")
 
     tg_client = get_client()
-    logger = get_logger("main")
+    logger = get_logger("collector")
 
     async with tg_client:
         for channel in channels:
             db_path = db_path_for_channel(channel)
 
-            # ⬇️ СНАЧАЛА открываем БД и создаём схему
             db = await get_db(db_path)
             try:
                 await init_db(db)
             finally:
                 await db.close()
 
-            # ⬇️ ТЕПЕРЬ таблицы гарантированно есть
             users_before, messages_before = await get_db_stats(db_path)
 
             logger.info(
