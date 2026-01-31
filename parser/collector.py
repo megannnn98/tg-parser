@@ -1,5 +1,5 @@
 from parser.telegram import fetch_messages, get_client
-from parser.storage import upsert_user, save_message, get_db, init_db
+from parser.storage import upsert_user, upsert_channel, save_message, get_db, init_db
 from parser.logger import get_logger
 from parser.utils import db_path_for_channel
 from config import CHANNELS
@@ -18,17 +18,22 @@ async def collect_channel(tg_client, db, channel_username: str):
     chat_id = channel.linked_chat.id
 
     async for msg in fetch_messages(tg_client, chat_id):
-        user_id = await upsert_user(
+        user = await upsert_user(
             db,
             tg_id=msg["tg_id"],
             username=msg["username"]
         )
 
+        channel = await upsert_channel(
+            db,
+            name=channel_username
+        )
+
         await save_message(
             db,
-            chat_id=chat_id,
+            user,
+            channel_username,
             msg=msg,
-            user_id=user_id
         )
 
     await db.commit()

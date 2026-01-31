@@ -9,41 +9,44 @@ async def get_db(db_path: Path):
 async def init_db(db):
     await db.execute("""
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tg_id INTEGER UNIQUE NOT NULL,
+            tg_id INTEGER PRIMARY KEY NOT NULL,
             username TEXT
+        )
+    """)
+
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS channels (
+            name TEXT PRIMARY KEY NOT NULL
         )
     """)
 
     await db.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER,
-            message_id INTEGER,
-            user_id INTEGER,
-            date TEXT,
+            user INTEGER,
+            channel TEXT,
             text TEXT,
+            date TEXT,
 
-            UNIQUE (chat_id, message_id),
-            FOREIGN KEY(user_id) REFERENCES users(id)
+            FOREIGN KEY(user) REFERENCES users(tg_id),
+            FOREIGN KEY(channel) REFERENCES channels(name)
         )
     """)
 
     await db.commit()
 
-async def save_message(db, chat_id, msg, user_id):
+async def save_message(db, user, channel, msg):
     await db.execute(
         """
         INSERT OR IGNORE INTO messages
-        (chat_id, message_id, user_id, date, text)
-        VALUES (?, ?, ?, ?, ?)
+        (user, channel, text, date)
+        VALUES (?, ?, ?, ?)
         """,
         (
-            chat_id,
-            msg["message_id"],
-            user_id,
-            msg["date"],
+            user,
+            channel,
             msg["text"],
+            msg["date"],
         )
     )
 async def upsert_user(db, tg_id: int, username: str | None) -> int:
@@ -53,12 +56,26 @@ async def upsert_user(db, tg_id: int, username: str | None) -> int:
         VALUES (?, ?)
         ON CONFLICT(tg_id) DO UPDATE SET
             username = excluded.username
-        RETURNING id
+        RETURNING username
         """,
         (tg_id, username)
     ) as cursor:
         row = await cursor.fetchone()
         return row[0]
+
+async def upsert_channel(
+    db: aiosqlite.Connection,
+    name: str,
+) -> str:
+    await db.execute(
+        """
+        INSERT OR IGNORE INTO channels (name)
+        VALUES (?)
+        """,
+        (name,),
+    )
+    await db.commit()
+    return name
 
 async def get_user_id(db, tg_id: int) -> int | None:
     async with db.execute(
