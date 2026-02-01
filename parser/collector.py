@@ -7,7 +7,6 @@ from pathlib import Path
 from parser.measure_time import measure_time
 import aiosqlite
 import asyncio
-import parser.logger as logger
 
 async def collect_channel(tg_client, db, channel_username: str):
     logger = get_logger("collector")
@@ -56,9 +55,6 @@ async def get_db_stats(db_path: Path) -> tuple[int, int, int]:
 
     return users_count, messages_count
 
-
-
-
 async def collect_one_channel(
     tg_client,
     channel: str,
@@ -74,22 +70,15 @@ async def collect_one_channel(
         db = await get_db(db_path)
         try:
             await init_db(db)
-        finally:
-            await db.close()
+            users_before, messages_before = await get_db_stats(db_path)
 
-        users_before, messages_before = await get_db_stats(db_path)
-
-        logger.info(
-            f"[{channel}] BEFORE → users={users_before}, "
-            f"messages={messages_before}"
-        )
-
-        # collect
-        db = await get_db(db_path)
-        try:
+            logger.info(
+                f"[{channel}] BEFORE → users={users_before}, "
+                f"messages={messages_before}"
+            )
             await collect_channel(tg_client, db, channel)
         finally:
-            await db.close()
+            pass
 
         users_after, messages_after = await get_db_stats(db_path)
 

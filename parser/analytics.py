@@ -1,86 +1,21 @@
-import aiosqlite
-import re
-from typing import Optional
-from pathlib import Path
 
-async def get_user_messages_from_db(
-    db_path: Path,
-    tg_id: int
-) -> list[str]:
-    async with aiosqlite.connect(db_path) as db:
-        async with db.execute(
-            """
-            SELECT m.text
-            FROM messages m
-            JOIN users u ON u.tg_id = m.user
-            WHERE u.tg_id = ?
-            ORDER BY m.id
-            """,
-            (tg_id,)
-        ) as cursor:
-            return [row[0] async for row in cursor]
+async def get_haters(db, hate_words: list[str]) -> list[tuple[str | None, int, int]]:
+    result = []
 
+    query = """
+    SELECT
+        u.username,
+        u.tg_id,
+        COUNT(*) AS cnt
+    FROM messages m
+    JOIN users u ON u.tg_id = m.user
+    WHERE LOWER(m.text) LIKE LOWER(?)
+    GROUP BY u.tg_id, u.username
+    ORDER BY cnt DESC
+    """
 
-async def get_users_from_db(db_path: Path) -> list[int]:
-    async with aiosqlite.connect(db_path) as db:
-        async with db.execute(
-            "SELECT tg_id FROM users"
-        ) as cursor:
-            return [row[0] async for row in cursor]
-
-
-async def get_username_by_tg_id(
-    db_path: Path,
-    tg_id: int
-) -> Optional[str]:
-    async with aiosqlite.connect(db_path) as db:
-        async with db.execute(
-            "SELECT username FROM users WHERE tg_id = ?",
-            (tg_id,)
-        ) as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row and row[0] else None
-
-
-async def get_haters_from_db(
-    db_path: Path,
-    hate_words: list[str]
-) -> list[tuple[int, str | None, int]]:
-    users = await get_users_from_db(db_path)
-
-    result: list[tuple[int, str | None, int]] = []
-
-    pattern = re.compile(
-        r"\b(" + "|".join(map(re.escape, hate_words)) + r")\b",
-        re.IGNORECASE
-    )
-
-    for tg_id in users:
-        messages = await get_user_messages_from_db(db_path, tg_id)
-
-        count = 0
-        for msg in messages:
-            count += len(pattern.findall(msg))
-
-        if count == 0:
-            continue
-
-        username = await get_username_by_tg_id(db_path, tg_id)
-
-        result.append((tg_id, username, count))
+    async with db.execute(query, (f"%{hate_words[0]}%",)) as cursor:
+        async for username, tg_id, cnt in cursor:
+            result.append((username, tg_id, cnt))
 
     return result
-
-
-
-
-async def print_user_messages(db_path: Path, tg_id: int):
-    messages = await get_user_messages_from_db(db_path, tg_id)
-    username = await get_username_by_tg_id(db_path, tg_id)
-
-    print("=" * 40)
-    print(f"Сообщения пользователя {username or tg_id}")
-    print("=" * 40)
-
-    for msg in messages:
-        print("-", msg)
