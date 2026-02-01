@@ -18,7 +18,7 @@ async def main():
     if args.mode == "haters":
 
         channels = CHANNELS
-        hate_words = ["рудуа"]
+        hate_words = ["путин"]
 
         for channel in channels:
             db_path = db_path_for_channel(channel)
@@ -26,15 +26,18 @@ async def main():
             logger.info(f"Processing {channel} ({db_path})")
 
             async with aiosqlite.connect(db_path) as db:
-                haters = await get_haters(db, hate_words)
+                haters = await get_haters(db, hate_words, channel)
 
             if not haters:
                 continue
 
             print(f"Канал {channel}")
-            for username, id, count in haters:
-                name = username or f"id:{id}"
-                print(f"    {name}: {count}")
+            for username, tg_id, hate_count, total_count, hate_percent in haters:
+                name = username or f"id:{tg_id}"
+                print(
+                    f"    {name}: {hate_count} "
+                    f"({hate_percent}% из {total_count} сообщений)"
+                )
 
     return
 
