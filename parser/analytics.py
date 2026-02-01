@@ -5,20 +5,21 @@ from pathlib import Path
 
 async def get_user_messages_from_db(
     db_path: Path,
-    tg_id: int
+    tg_id: int,
+    channel: str,
 ) -> list[str]:
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
             """
-            SELECT m.text
-            FROM messages m
-            JOIN users u ON u.tg_id = m.user
-            WHERE u.tg_id = ?
-            ORDER BY m.id
+            SELECT text
+            FROM messages
+            WHERE user = ? AND channel = ?
+            ORDER BY id
             """,
-            (tg_id,)
+            (tg_id, channel)
         ) as cursor:
             return [row[0] async for row in cursor]
+
 
 
 async def get_users_from_db(db_path: Path) -> list[int]:
@@ -44,6 +45,7 @@ async def get_username_by_tg_id(
 
 async def get_haters_from_db(
     db_path: Path,
+    channel: str,
     hate_words: list[str]
 ) -> list[tuple[int, str | None, int]]:
     users = await get_users_from_db(db_path)
@@ -56,7 +58,7 @@ async def get_haters_from_db(
     )
 
     for tg_id in users:
-        messages = await get_user_messages_from_db(db_path, tg_id)
+        messages = await get_user_messages_from_db(db_path, tg_id, channel)
 
         count = 0
         for msg in messages:

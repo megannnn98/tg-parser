@@ -12,21 +12,6 @@ def sanitize_channel_name(name: str) -> str:
     name = name.strip().lstrip("@").lower()
     return re.sub(r"[^a-z0-9_]", "_", name)
 
-def db_path_for_channel(channel: str) -> Path:
-    safe = sanitize_channel_name(channel)
-    return Path(DATA_DIR) / f"{safe}.db"
-
-def list_channels() -> list[str]:
-    data_dir = Path(DATA_DIR)
-    if not data_dir.exists():
-        return []
-
-    channels = []
-    for db in data_dir.glob("*.db"):
-        channels.append(db.stem)  # ru_doy.db -> ru_doy
-
-    return sorted(channels)
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Telegram parser"

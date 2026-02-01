@@ -3,7 +3,9 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 import aiosqlite
 from pathlib import Path
-from parser.utils import list_channels, db_path_for_channel
+from parser.utils import list_channels
+from config import MAIN_DB
+
 
 app = FastAPI()
 
@@ -13,7 +15,7 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 @app.get("/channels/{name}/users")
 async def channel_users(request: Request, name: str):
-    db_path = db_path_for_channel(name)
+    db_path = MAIN_DB
 
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -53,7 +55,7 @@ async def channel_users(request: Request, name: str):
 
 @app.get("/channels/{name}/users/{user_id}")
 async def channel_user_messages(request: Request, name: str, user_id: int):
-    db_path = db_path_for_channel(name)
+    db_path = MAIN_DB
 
     if not db_path.exists():
         raise HTTPException(status_code=404, detail="Channel not found")
