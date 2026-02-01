@@ -9,10 +9,6 @@ def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     return text.lower()
 
-def sanitize_channel_name(name: str) -> str:
-    name = name.strip().lstrip("@").lower()
-    return re.sub(r"[^a-z0-9_]", "_", name)
-
 def db_path_for_channel(channel: str) -> Path:
     return Path(DB_PATH)
 
