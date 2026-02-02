@@ -15,21 +15,27 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 async def channel_users(request: Request, name: str):
     db_path = db_path_for_channel(name)
 
-    if not db_path.exists():
-        raise HTTPException(status_code=404, detail="Channel not found")
-
     async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            "SELECT 1 FROM channels WHERE name = ?",
+            (name,),
+        ) as cursor:
+            exists = await cursor.fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Channel not found")
+
         query = """
         SELECT
-            u.id,
+            u.tg_id,
             u.username,
             COUNT(m.id) AS messages_count
         FROM users u
-        LEFT JOIN messages m ON m.user_id = u.id
-        GROUP BY u.id
+        JOIN messages m ON m.user = u.tg_id
+        WHERE m.channel = ?
+        GROUP BY u.tg_id
         ORDER BY messages_count DESC
         """
-        cursor = await db.execute(query)
+        cursor = await db.execute(query, (name,))
         rows = await cursor.fetchall()
 
     users = [
@@ -55,21 +61,26 @@ async def channel_users(request: Request, name: str):
 async def channel_user_messages(request: Request, name: str, user_id: int):
     db_path = db_path_for_channel(name)
 
-    if not db_path.exists():
-        raise HTTPException(status_code=404, detail="Channel not found")
-
     async with aiosqlite.connect(db_path) as db:
+        async with db.execute(
+            "SELECT 1 FROM channels WHERE name = ?",
+            (name,),
+        ) as cursor:
+            exists = await cursor.fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Channel not found")
+
         query = """
         SELECT
             u.username,
             m.date,
             m.text
         FROM messages m
-        JOIN users u ON u.id = m.user_id
-        WHERE u.id = ?
+        JOIN users u ON u.tg_id = m.user
+        WHERE u.tg_id = ? AND m.channel = ?
         ORDER BY m.date DESC
         """
-        cursor = await db.execute(query, (user_id,))
+        cursor = await db.execute(query, (user_id, name))
         rows = await cursor.fetchall()
 
     if not rows:

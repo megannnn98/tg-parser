@@ -45,6 +45,19 @@ async def init_db(db):
         )
     """)
 
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_channel
+        ON messages(channel)
+    """)
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_user_channel
+        ON messages(user, channel)
+    """)
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_messages_date
+        ON messages(date)
+    """)
+
     await db.commit()
 
 async def save_message(db, user, channel, msg):
@@ -60,6 +73,45 @@ async def save_message(db, user, channel, msg):
             normalize(msg["text"]),
             msg["date"],
         )
+    )
+
+async def save_messages_many(db, rows: list[tuple[int, str, str, str]]):
+    if not rows:
+        return
+    normalized_rows = []
+    for user, channel, text, date in rows:
+        normalized_rows.append((user, channel, normalize(text), date))
+    await db.executemany(
+        """
+        INSERT OR IGNORE INTO messages
+        (user, channel, text, date)
+        VALUES (?, ?, ?, ?)
+        """,
+        normalized_rows,
+    )
+
+async def upsert_users_many(db, rows: list[tuple[int, str | None]]):
+    if not rows:
+        return
+    await db.executemany(
+        """
+        INSERT INTO users (tg_id, username)
+        VALUES (?, ?)
+        ON CONFLICT(tg_id) DO UPDATE SET
+            username = excluded.username
+        """,
+        rows,
+    )
+
+async def upsert_channels_many(db, rows: list[tuple[str]]):
+    if not rows:
+        return
+    await db.executemany(
+        """
+        INSERT OR IGNORE INTO channels (name)
+        VALUES (?)
+        """,
+        rows,
     )
 async def upsert_user(db, tg_id: int, username: str | None) -> int:
     async with db.execute(
@@ -86,7 +138,6 @@ async def upsert_channel(
         """,
         (name,),
     )
-    await db.commit()
     return name
 
 async def get_user_id(db, tg_id: int) -> int | None:
