@@ -1,7 +1,8 @@
 import aiosqlite
 from pathlib import Path
 from parser.utils import normalize
-
+from config import DB_PATH
+import sqlite3
 
 async def get_db(db_path: Path) -> aiosqlite.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -139,3 +140,19 @@ async def upsert_channel(
         (name,),
     )
     return name
+
+
+async def list_channels() -> list[str]:
+    db_path = Path(DB_PATH)
+    if not db_path.exists():
+        return []
+
+    try:
+        async with aiosqlite.connect(str(db_path)) as conn:
+            async with conn.execute(
+                "SELECT name FROM channels ORDER BY name ASC"
+            ) as cur:
+                rows = await cur.fetchall()
+                return [r[0] for r in rows]
+    except sqlite3.Error:
+        return []
