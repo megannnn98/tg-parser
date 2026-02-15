@@ -1,6 +1,6 @@
 import asyncio
 import aiosqlite
-from parser.collector import collect_db
+from parser.collector import collect_db, CollectorConfig
 from parser.analytics import get_haters
 from parser.utils import parse_args
 from parser.logger import get_logger
@@ -13,7 +13,8 @@ async def main():
     db_path = Path(DB_PATH)
 
     if args.mode == "collect":
-        await collect_db(db_path)
+        cfg = CollectorConfig(channels=CHANNELS)
+        await collect_db(db_path, cfg)
         return
 
     if args.mode == "haters":
