@@ -139,11 +139,3 @@ async def upsert_channel(
         (name,),
     )
     return name
-
-async def get_user_id(db, tg_id: int) -> int | None:
-    async with db.execute(
-        "SELECT id FROM users WHERE tg_id = ?",
-        (tg_id,)
-    ) as cursor:
-        row = await cursor.fetchone()
-        return row[0] if row else None
