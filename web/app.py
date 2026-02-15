@@ -102,7 +102,7 @@ async def channel_user_messages(request: Request, name: str, user_id: int):
 
 @app.get("/channels")
 async def channels_index(request: Request):
-    channels = list_channels()
+    channels = await list_channels()
 
     return templates.TemplateResponse(
         "channels.html",
