@@ -2,10 +2,10 @@ import asyncio
 import aiosqlite
 from parser.collector import collect_db
 from parser.analytics import get_haters
-from parser.utils import parse_args, get_db_path
+from parser.utils import parse_args
 from parser.logger import get_logger
 from config import CHANNELS
-from parser.storage import get_db
+from parser.storage import get_db_path
 
 async def main():
     args = parse_args()

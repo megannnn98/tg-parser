@@ -7,7 +7,7 @@ from parser.storage import (
     upsert_users_many,
 )
 from parser.logger import get_logger
-from parser.utils import get_db_path
+from parser.storage import get_db_path
 from config import CHANNELS
 from parser.measure_time import measure_time
 import aiosqlite
