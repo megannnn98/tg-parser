@@ -2,23 +2,26 @@ name: CI
 
 on:
   push:
-    branches: [ main, dev ]
+    branches:
+      - "**"
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/${{ vars.USERNAME }}/tg-parser-ci:latest
     env:
-      API_ID: "1"
-      API_HASH: "test_hash"
+      API_ID: ${{ vars.API_ID }}
+      API_HASH: ${{ secrets.API_HASH }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Install deps
         run: |
@@ -26,9 +29,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run basic checks
-        run: |
-          python -m compileall .
+        run: python -m compileall .
 
       - name: Run unit tests
-        run: |
-          python -m pytest -q
+        run: python -m pytest -q
