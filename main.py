@@ -2,7 +2,7 @@ import asyncio
 import aiosqlite
 from parser.collector import collect_db
 from parser.analytics import get_haters
-from parser.utils import parse_args, db_path_for_channel
+from parser.utils import parse_args, get_db_path
 from parser.logger import get_logger
 from config import CHANNELS
 from parser.storage import get_db
@@ -21,7 +21,7 @@ async def main():
         hate_words = ["путин"]
 
         for channel in channels:
-            db_path = db_path_for_channel(channel)
+            db_path = get_db_path()
 
             logger.info(f"Processing {channel} ({db_path})")
 

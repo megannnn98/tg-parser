@@ -8,8 +8,8 @@ def get_client():
         api_hash=API_HASH
     )
 
-async def fetch_messages(tg_client, chat_id):
-    async for msg in tg_client.get_chat_history(chat_id, LIMIT):
+async def fetch_messages(tg_client, channel_linked_chat_id):
+    async for msg in tg_client.get_chat_history(channel_linked_chat_id, LIMIT):
         if not msg.text or not msg.from_user:
             continue
 

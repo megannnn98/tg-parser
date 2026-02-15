@@ -7,7 +7,7 @@ from parser.storage import (
     upsert_users_many,
 )
 from parser.logger import get_logger
-from parser.utils import db_path_for_channel
+from parser.utils import get_db_path
 from config import CHANNELS
 from parser.measure_time import measure_time
 import aiosqlite
@@ -89,12 +89,11 @@ async def collect_channel(tg_client, queue: asyncio.Queue, channel_username: str
         logger.warning(f"Channel {channel_username} has no linked discussion")
         return
 
-    chat_id = channel.linked_chat.id
     await queue.put((_QUEUE_CHANNEL, channel_username))
 
     seen_users: dict[int, str | None] = {}
 
-    async for msg in fetch_messages(tg_client, chat_id):
+    async for msg in fetch_messages(tg_client, channel.linked_chat.id):
         tg_id = msg["tg_id"]
         username = msg["username"]
         prev_username = seen_users.get(tg_id)
@@ -174,7 +173,7 @@ async def collect_db():
     tg_client = get_client()
     logger = get_logger("collector")
 
-    db_path = db_path_for_channel("default")
+    db_path = get_db_path()
     queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
     writer_task = asyncio.create_task(_db_writer(db_path, queue))
     sem = asyncio.Semaphore(8)

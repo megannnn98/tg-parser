@@ -9,7 +9,7 @@ def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     return text.lower()
 
-def db_path_for_channel(channel: str) -> Path:
+def get_db_path() -> Path:
     return Path(DB_PATH)
 
 def list_channels() -> list[str]:
