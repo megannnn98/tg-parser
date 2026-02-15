@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 import aiosqlite
 from pathlib import Path
-from parser.utils import list_channels, db_path_for_channel
+from parser.utils import list_channels, get_db_path
 
 app = FastAPI()
 
@@ -13,7 +13,7 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
 @app.get("/channels/{name}/users")
 async def channel_users(request: Request, name: str):
-    db_path = db_path_for_channel(name)
+    db_path = get_db_path(name)
 
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
@@ -59,7 +59,7 @@ async def channel_users(request: Request, name: str):
 
 @app.get("/channels/{name}/users/{user_id}")
 async def channel_user_messages(request: Request, name: str, user_id: int):
-    db_path = db_path_for_channel(name)
+    db_path = get_db_path(name)
 
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
