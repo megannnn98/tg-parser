@@ -166,28 +166,37 @@ async def collect_one_channel(
 
 @measure_time(name="collect_db")
 async def collect_db():
-    channels = CHANNELS
-    if not channels:
-        raise RuntimeError("CHANNELS are empty")
 
-    tg_client = get_client()
-    logger = get_logger("collector")
+    try:
+        channels = CHANNELS
+        if not channels:
+            raise RuntimeError("CHANNELS are empty")
 
-    db_path = get_db_path()
-    queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
-    writer_task = asyncio.create_task(_db_writer(db_path, queue))
-    sem = asyncio.Semaphore(8)
+        tg_client = get_client()
+        logger = get_logger("collector")
 
-    async with tg_client:
-        tasks = [
-            asyncio.create_task(
-                collect_one_channel(tg_client, queue, channel, sem, db_path)
-            )
-            for channel in channels
-        ]
-        await asyncio.gather(*tasks)
+        db_path = get_db_path()
+        queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
+        writer_task = asyncio.create_task(_db_writer(db_path, queue))
+        sem = asyncio.Semaphore(8)
 
-    await queue.put(None)
-    await writer_task
+        async with tg_client:
+            tasks = [
+                asyncio.create_task(
+                    collect_one_channel(tg_client, queue, channel, sem, db_path)
+                )
+                for channel in channels
+            ]
+            await asyncio.gather(*tasks)
 
-    logger.info("Done")
+        await queue.put(None)
+        await writer_task
+
+        logger.info("Done")
+
+    except Exception as e:
+        logger.exception(e)
+        raise
+
+    finally:
+        logger.info("Done")
