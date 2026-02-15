@@ -7,9 +7,9 @@ from parser.storage import (
     upsert_users_many,
 )
 from parser.logger import get_logger
-from parser.storage import get_db_path
 from config import CHANNELS
 from parser.measure_time import measure_time
+from pathlib import Path
 import aiosqlite
 import asyncio
 
@@ -18,7 +18,7 @@ _QUEUE_USER = "user"
 _QUEUE_MESSAGE = "message"
 
 
-async def _db_writer(db_path, queue: asyncio.Queue, batch_size: int = 500):
+async def _db_writer(db_path: Path, queue: asyncio.Queue, batch_size: int = 500):
     db = await get_db(db_path)
     try:
         await init_db(db)
@@ -114,7 +114,7 @@ async def collect_channel(tg_client, queue: asyncio.Queue, channel_username: str
         )
 
 
-async def get_db_stats(db_path, channel: str) -> tuple[int, int]:
+async def get_db_stats(db_path: Path, channel: str) -> tuple[int, int]:
     try:
         async with aiosqlite.connect(db_path) as db:
             async with db.execute(
@@ -165,7 +165,7 @@ async def collect_one_channel(
 
 
 @measure_time(name="collect_db")
-async def collect_db():
+async def collect_db(db_path: Path):
 
     try:
         channels = CHANNELS
@@ -175,7 +175,6 @@ async def collect_db():
         tg_client = get_client()
         logger = get_logger("collector")
 
-        db_path = get_db_path()
         queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
         writer_task = asyncio.create_task(_db_writer(db_path, queue))
         sem = asyncio.Semaphore(8)
