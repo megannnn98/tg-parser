@@ -3,6 +3,7 @@ asyncio
 fastapi
 jinja2
 pyrogram==2.0.106
+pytest
 python-dotenv
 tgcrypto==1.2.5
 uvicorn
