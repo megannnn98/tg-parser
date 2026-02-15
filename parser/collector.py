@@ -1,4 +1,15 @@
-from parser.telegram import fetch_messages, get_client
+# parser/collector.py
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Awaitable, Callable, Iterable, Protocol
+
+import aiosqlite
+
+from parser.logger import get_logger
+from parser.measure_time import measure_time
 from parser.storage import (
     get_db,
     init_db,
@@ -6,22 +17,40 @@ from parser.storage import (
     upsert_channels_many,
     upsert_users_many,
 )
-from parser.logger import get_logger
-from config import CHANNELS
-from parser.measure_time import measure_time
-from pathlib import Path
-import aiosqlite
-import asyncio
+from parser.telegram import fetch_messages, get_client
+
 
 _QUEUE_CHANNEL = "channel"
 _QUEUE_USER = "user"
 _QUEUE_MESSAGE = "message"
 
 
-async def _db_writer(db_path: Path, queue: asyncio.Queue, batch_size: int = 500):
+class TgClient(Protocol):
+    async def __aenter__(self): ...
+    async def __aexit__(self, exc_type, exc, tb): ...
+    async def get_chat(self, channel_username: str): ...
+
+
+@dataclass(frozen=True)
+class CollectorConfig:
+    channels: list[str]
+    batch_size: int = 500
+    queue_size: int = 5000
+    concurrency: int = 8
+
+
+@dataclass(frozen=True)
+class CollectorDeps:
+    tg_client_factory: Callable[[], TgClient] = get_client
+    fetch_messages_fn: Callable = fetch_messages
+    logger_factory: Callable[[str], object] = get_logger
+
+
+async def _db_writer(db_path: Path, queue: asyncio.Queue, batch_size: int):
     db = await get_db(db_path)
     try:
         await init_db(db)
+
         channel_buf: set[str] = set()
         user_buf: dict[int, str | None] = {}
         msg_buf: list[tuple[int, str, str, str]] = []
@@ -32,15 +61,9 @@ async def _db_writer(db_path: Path, queue: asyncio.Queue, batch_size: int = 500)
             await db.execute("BEGIN")
             try:
                 if channel_buf:
-                    await upsert_channels_many(
-                        db,
-                        [(name,) for name in channel_buf],
-                    )
+                    await upsert_channels_many(db, [(c,) for c in channel_buf])
                 if user_buf:
-                    await upsert_users_many(
-                        db,
-                        [(tg_id, username) for tg_id, username in user_buf.items()],
-                    )
+                    await upsert_users_many(db, list(user_buf.items()))
                 if msg_buf:
                     await save_messages_many(db, msg_buf)
                 await db.commit()
@@ -67,9 +90,9 @@ async def _db_writer(db_path: Path, queue: asyncio.Queue, batch_size: int = 500)
                 msg_buf.append(item[1])
 
             if (
-                len(msg_buf) >= batch_size
+                len(channel_buf) >= batch_size
                 or len(user_buf) >= batch_size
-                or len(channel_buf) >= batch_size
+                or len(msg_buf) >= batch_size
             ):
                 await flush()
 
@@ -80,122 +103,57 @@ async def _db_writer(db_path: Path, queue: asyncio.Queue, batch_size: int = 500)
         await db.close()
 
 
-async def collect_channel(tg_client, queue: asyncio.Queue, channel_username: str):
-    logger = get_logger("collector")
-
+async def collect_channel(
+    tg_client: TgClient,
+    queue: asyncio.Queue,
+    channel_username: str,
+    fetch_messages_fn: Callable,
+    logger,
+):
     channel = await tg_client.get_chat(channel_username)
-
     if not channel.linked_chat:
         logger.warning(f"Channel {channel_username} has no linked discussion")
         return
 
     await queue.put((_QUEUE_CHANNEL, channel_username))
-
     seen_users: dict[int, str | None] = {}
 
-    async for msg in fetch_messages(tg_client, channel.linked_chat.id):
+    async for msg in fetch_messages_fn(tg_client, channel.linked_chat.id):
         tg_id = msg["tg_id"]
         username = msg["username"]
-        prev_username = seen_users.get(tg_id)
-        if prev_username is None or prev_username != username:
+        if seen_users.get(tg_id) != username:
             await queue.put((_QUEUE_USER, tg_id, username))
             seen_users[tg_id] = username
 
-        await queue.put(
-            (
-                _QUEUE_MESSAGE,
-                (
-                    tg_id,
-                    channel_username,
-                    msg["text"],
-                    msg["date"],
-                ),
-            )
-        )
-
-
-async def get_db_stats(db_path: Path, channel: str) -> tuple[int, int]:
-    try:
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute(
-                "SELECT COUNT(DISTINCT user) FROM messages WHERE channel = ?",
-                (channel,),
-            ) as cur:
-                users_count = (await cur.fetchone())[0]
-    except aiosqlite.OperationalError:
-        users_count = 0
-
-    try:
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute(
-                "SELECT COUNT(*) FROM messages WHERE channel = ?",
-                (channel,),
-            ) as cur:
-                messages_count = (await cur.fetchone())[0]
-    except aiosqlite.OperationalError:
-        messages_count = 0
-
-    return users_count, messages_count
-
-
-async def collect_one_channel(
-    tg_client,
-    queue: asyncio.Queue,
-    channel: str,
-    sem: asyncio.Semaphore,
-    db_path,
-):
-    logger = get_logger("collector")
-    async with sem:
-        logger.info(f"[{channel}] start")
-
-        users_before, messages_before = await get_db_stats(db_path, channel)
-
-        logger.info(
-            f"[{channel}] BEFORE → users={users_before}, "
-            f"messages={messages_before}"
-        )
-        await collect_channel(tg_client, queue, channel)
-        users_after, messages_after = await get_db_stats(db_path, channel)
-
-        logger.info(
-            f"[{channel}] AFTER  → users={users_after} (+{users_after - users_before}), "
-            f"messages={messages_after} (+{messages_after - messages_before})"
-        )
+        await queue.put((_QUEUE_MESSAGE, (tg_id, channel_username, msg["text"], msg["date"])))
 
 
 @measure_time(name="collect_db")
-async def collect_db(db_path: Path):
+async def collect_db(db_path: Path, cfg: CollectorConfig, deps: CollectorDeps = CollectorDeps()):
+    if not cfg.channels:
+        raise RuntimeError("CHANNELS are empty")
 
+    logger = deps.logger_factory("collector")
+    queue: asyncio.Queue = asyncio.Queue(maxsize=cfg.queue_size)
+    writer_task = asyncio.create_task(_db_writer(db_path, queue, cfg.batch_size))
+    sem = asyncio.Semaphore(cfg.concurrency)
+
+    tg_client = deps.tg_client_factory()
     try:
-        channels = CHANNELS
-        if not channels:
-            raise RuntimeError("CHANNELS are empty")
-
-        tg_client = get_client()
-        logger = get_logger("collector")
-
-        queue: asyncio.Queue = asyncio.Queue(maxsize=5000)
-        writer_task = asyncio.create_task(_db_writer(db_path, queue))
-        sem = asyncio.Semaphore(8)
-
         async with tg_client:
-            tasks = [
-                asyncio.create_task(
-                    collect_one_channel(tg_client, queue, channel, sem, db_path)
-                )
-                for channel in channels
-            ]
-            await asyncio.gather(*tasks)
+            async def one(channel: str):
+                async with sem:
+                    logger.info(f"[{channel}] start")
+                    await collect_channel(
+                        tg_client=tg_client,
+                        queue=queue,
+                        channel_username=channel,
+                        fetch_messages_fn=deps.fetch_messages_fn,
+                        logger=logger,
+                    )
+                    logger.info(f"[{channel}] done")
 
+            await asyncio.gather(*(one(ch) for ch in cfg.channels))
+    finally:
         await queue.put(None)
         await writer_task
-
-        logger.info("Done")
-
-    except Exception as e:
-        logger.exception(e)
-        raise
-
-    finally:
-        logger.info("Done")
