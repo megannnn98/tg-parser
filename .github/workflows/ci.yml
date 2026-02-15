@@ -55,13 +55,22 @@ jobs:
           pip install -r requirements.txt
           pip install commitizen
 
+      - name: Debug release context
+        run: |
+          git --no-pager log --oneline -n 10
+          git tag --list | tail -n 20
+          cz version
+
       - name: Configure git user
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Bump version with Commitizen
-        run: cz bump --yes
+        run: |
+          cz bump --yes || cz bump --yes --increment PATCH
 
       - name: Push release commit and tag
-        run: git push --follow-tags
+        run: |
+          git push origin HEAD:main
+          git push --follow-tags
