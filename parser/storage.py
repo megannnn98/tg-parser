@@ -1,11 +1,7 @@
 import aiosqlite
 from pathlib import Path
 from parser.utils import normalize
-import sqlite3
 
-
-def get_db_path() -> Path:
-    return Path(DB_PATH)
 
 async def get_db(db_path: Path) -> aiosqlite.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
