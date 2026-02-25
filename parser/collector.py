@@ -4,10 +4,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Awaitable, Callable, Iterable, Protocol
-
-import aiosqlite
-
+from typing import Callable, Protocol
+from pyrogram.errors import AuthKeyUnregistered
 from parser.logger import get_logger
 from parser.measure_time import measure_time
 from parser.storage import (
@@ -17,7 +15,7 @@ from parser.storage import (
     upsert_channels_many,
     upsert_users_many,
 )
-from parser.telegram import fetch_messages, get_client
+from parser.telegram import fetch_messages, get_client, reset_session_files
 
 
 _QUEUE_CHANNEL = "channel"
@@ -121,7 +119,7 @@ async def collect_channel(
     async for msg in fetch_messages_fn(tg_client, channel.linked_chat.id):
         tg_id = msg["tg_id"]
         username = msg["username"]
-        if seen_users.get(tg_id) != username:
+        if tg_id not in seen_users or seen_users[tg_id] != username:
             await queue.put((_QUEUE_USER, tg_id, username))
             seen_users[tg_id] = username
 
@@ -138,22 +136,47 @@ async def collect_db(db_path: Path, cfg: CollectorConfig, deps: CollectorDeps = 
     writer_task = asyncio.create_task(_db_writer(db_path, queue, cfg.batch_size))
     sem = asyncio.Semaphore(cfg.concurrency)
 
+    async def run_collection(tg_client: TgClient):
+        async def one(channel: str):
+            async with sem:
+                logger.info(f"[{channel}] start")
+                await collect_channel(
+                    tg_client=tg_client,
+                    queue=queue,
+                    channel_username=channel,
+                    fetch_messages_fn=deps.fetch_messages_fn,
+                    logger=logger,
+                )
+                logger.info(f"[{channel}] done")
+
+        await asyncio.gather(*(one(ch) for ch in cfg.channels))
+
     tg_client = deps.tg_client_factory()
     try:
-        async with tg_client:
-            async def one(channel: str):
-                async with sem:
-                    logger.info(f"[{channel}] start")
-                    await collect_channel(
-                        tg_client=tg_client,
-                        queue=queue,
-                        channel_username=channel,
-                        fetch_messages_fn=deps.fetch_messages_fn,
-                        logger=logger,
-                    )
-                    logger.info(f"[{channel}] done")
-
-            await asyncio.gather(*(one(ch) for ch in cfg.channels))
+        try:
+            try:
+                async with tg_client:
+                    await run_collection(tg_client)
+            except EOFError as exc:
+                raise RuntimeError(
+                    "Pyrogram requires interactive login but stdin is unavailable. "
+                    "Run container with -it for first login or use bot_token."
+                ) from exc
+        except AuthKeyUnregistered:
+            removed = reset_session_files()
+            logger.warning(
+                "Telegram session key is unregistered. Removed %s session file(s); retrying login once.",
+                removed,
+            )
+            tg_client = deps.tg_client_factory()
+            try:
+                async with tg_client:
+                    await run_collection(tg_client)
+            except EOFError as exc:
+                raise RuntimeError(
+                    "Session was reset and Telegram requested login, but stdin is unavailable. "
+                    "Run container with -it for first login or use bot_token."
+                ) from exc
     finally:
         await queue.put(None)
         await writer_task

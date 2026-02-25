@@ -7,6 +7,7 @@ load_dotenv()
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
+SESSION_NAME = os.getenv("SESSION_NAME", "my_session")
 
 CHANNELS = json.loads(Path("channels.json").read_text())
 DATA_DIR = os.getenv("DATA_DIR", "data")

@@ -29,7 +29,7 @@ async def get_haters(
     WHERE m.channel = ?
     GROUP BY u.tg_id, u.username
     HAVING hate_messages > 0
-    ORDER BY hate_messages DESC, total_messages DESC
+    ORDER BY hate_percent DESC, hate_messages DESC, total_messages DESC
     """
 
     patterns = [f"%{word}%" for word in normalized_hate_words]

@@ -8,6 +8,7 @@ def _load_telegram_module(monkeypatch):
     monkeypatch.setenv("API_ID", "12345")
     monkeypatch.setenv("API_HASH", "hash123")
     monkeypatch.setenv("LIMIT", "2")
+    monkeypatch.setenv("SESSION_NAME", "test_session")
 
     fake_pyrogram = SimpleNamespace(Client=object)
     monkeypatch.setitem(sys.modules, "pyrogram", fake_pyrogram)
@@ -32,10 +33,46 @@ def test_get_client_uses_config_values(monkeypatch):
 
     assert isinstance(client, FakeClient)
     assert captured == {
-        "session_name": "my_session",
+        "session_name": "test_session",
         "api_id": 12345,
         "api_hash": "hash123",
     }
+
+
+def test_reset_session_files_removes_known_sqlite_files(monkeypatch, tmp_path):
+    telegram = _load_telegram_module(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    main_session = tmp_path / "custom_name.session"
+    wal_session = tmp_path / "custom_name.session-wal"
+    shm_session = tmp_path / "custom_name.session-shm"
+    unrelated = tmp_path / "other.session"
+
+    main_session.write_text("main")
+    wal_session.write_text("wal")
+    shm_session.write_text("shm")
+    unrelated.write_text("other")
+
+    removed = telegram.reset_session_files("custom_name")
+
+    assert removed == 3
+    assert not main_session.exists()
+    assert not wal_session.exists()
+    assert not shm_session.exists()
+    assert unrelated.exists()
+
+
+def test_reset_session_files_accepts_full_session_filename(monkeypatch, tmp_path):
+    telegram = _load_telegram_module(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    session_file = tmp_path / "explicit.session"
+    session_file.write_text("main")
+
+    removed = telegram.reset_session_files("explicit.session")
+
+    assert removed == 1
+    assert not session_file.exists()
 
 
 def test_fetch_messages_filters_invalid_and_maps_fields(monkeypatch):

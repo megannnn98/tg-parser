@@ -75,3 +75,33 @@ def test_get_haters_filters_by_channel(tmp_path: Path):
     chan_a, chan_b = asyncio.run(_run())
     assert chan_a == [("alice", 1, 1, 1, 100.0)]
     assert chan_b == [("alice", 1, 1, 1, 100.0)]
+
+
+def test_get_haters_sorted_by_hate_percent_desc(tmp_path: Path):
+    async def _run():
+        db = await get_db(tmp_path / "app.db")
+        try:
+            await init_db(db)
+            await upsert_channels_many(db, [("chan_a",)])
+            await upsert_users_many(db, [(1, "alice"), (2, "bob"), (3, "carol")])
+            await save_messages_many(
+                db,
+                [
+                    (1, "chan_a", "spam 1", "2025-02-01"),
+                    (1, "chan_a", "ham", "2025-02-01"),
+                    (1, "chan_a", "ham", "2025-02-01"),
+                    (2, "chan_a", "spam 2", "2025-02-01"),
+                    (2, "chan_a", "ham", "2025-02-01"),
+                    (3, "chan_a", "spam 3", "2025-02-01"),
+                ],
+            )
+            return await get_haters(db, ["spam"], "chan_a")
+        finally:
+            await db.close()
+
+    result = asyncio.run(_run())
+    assert result == [
+        ("carol", 3, 1, 1, 100.0),
+        ("bob", 2, 1, 2, 50.0),
+        ("alice", 1, 1, 3, 33.33),
+    ]
