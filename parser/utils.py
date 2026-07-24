@@ -14,7 +14,7 @@ def parse_args(argv: list[str] | None = None):
         "mode",
         nargs="?",
         default="collect",
-        choices=["collect", "haters", "comments"],
+        choices=["collect", "comments"],
         help="Run mode"
     )
     parser.add_argument(

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A Telegram scraper that collects comments/messages from the discussion threads linked to a list of channels (`channels.json`) into a local SQLite DB, plus a simple "haters" analytics query that finds users who frequently use configured hate words in a given channel. Uses Pyrogram as the Telegram client.
+A Telegram scraper that collects comments/messages from the discussion threads linked to a list of channels (`channels.json`) into a local SQLite DB, plus a `comments` mode that exports all of a given user's messages (by username) across every channel to per-channel CSV files. Uses Pyrogram as the Telegram client.
 
 ## Commands
 
@@ -15,7 +15,7 @@ docker build -t telegram-parser -f ci/Dockerfile .
 
 # Run the app (mode defaults to "collect" if omitted)
 ./scripts/run.sh collect
-./scripts/run.sh haters
+./scripts/run.sh comments --username <nick>
 
 # Run the full test suite
 ./scripts/tests.sh
@@ -44,7 +44,7 @@ All config is env-driven via `config.py` (loaded through `python-dotenv` from `.
 
 ## Architecture
 
-Entry point `main.py` dispatches on `args.mode` (`collect` | `haters`, parsed in `parser/utils.py:parse_args`) — there is no shared "app" object, each mode is a standalone async flow.
+Entry point `main.py` dispatches on `args.mode` (`collect` | `comments`, parsed in `parser/utils.py:parse_args`) — there is no shared "app" object, each mode is a standalone async flow.
 
 **Collect pipeline** (`parser/collector.py`) is producer/consumer over a single bounded `asyncio.Queue`:
 - `collect_db` spins up one `_db_writer` consumer task and fans out `collect_channel` producers over `cfg.channels`, bounded by `asyncio.Semaphore(cfg.concurrency)`.
@@ -55,7 +55,7 @@ Entry point `main.py` dispatches on `args.mode` (`collect` | `haters`, parsed in
 
 **Storage** (`parser/storage.py`) is raw `aiosqlite` (no ORM). Schema: `users(tg_id PK, username)`, `channels(name PK)`, `messages(id, user FK, channel FK, text, date)`, with indexes on `channel`, `(user, channel)`, and `date`. WAL mode + `synchronous=NORMAL` are set in `get_db`. Message text is normalized (NFKC + lowercase, `parser/utils.py:normalize`) before insert. Both single-row (`save_message`, `upsert_user`, `upsert_channel`) and batch (`save_messages_many`, `upsert_users_many`, `upsert_channels_many`) variants exist; the collector pipeline uses the batch variants exclusively.
 
-**Analytics** (`parser/analytics.py:get_haters`) runs a single SQL query per channel that joins `messages`/`users`, computes hate-word hit counts via `LIKE` pattern matching, and returns users above 0% hate rate sorted by percentage/count.
+**Analytics** (`parser/analytics.py:get_user_comments`) runs a single SQL query joining `messages`/`users` on a case-insensitive username match, returning `(channel, date, text)` across all channels sorted by channel then date. `main.py`'s `comments` mode groups that result by channel (via `itertools.groupby`, relying on the query's ordering) and writes one CSV per channel through `parser/export.py:write_comments_csv`, which rejects channel names containing path separators or `.`/`..` before building the output path.
 
 `parser/measure_time.py` provides a `@measure_time(name=...)` decorator (works on both sync and async functions) that logs elapsed wall time; used on `collect_db`.
 
