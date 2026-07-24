@@ -5,7 +5,7 @@ def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     return text.lower()
 
-def parse_args():
+def parse_args(argv: list[str] | None = None):
     parser = argparse.ArgumentParser(
         description="Telegram parser"
     )
@@ -14,8 +14,13 @@ def parse_args():
         "mode",
         nargs="?",
         default="collect",
-        choices=["collect", "haters"],
+        choices=["collect", "haters", "comments"],
         help="Run mode"
     )
+    parser.add_argument(
+        "--username",
+        default=None,
+        help="Telegram username to collect comments for (required for comments mode)"
+    )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
