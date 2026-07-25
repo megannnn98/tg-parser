@@ -1,6 +1,6 @@
-from parser.utils import normalize
-
 import pytest
+
+from parser.utils import normalize
 
 
 @pytest.mark.parametrize(

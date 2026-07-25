@@ -1,0 +1,164 @@
+# Political slang dictionary for Russian-language Telegram comments
+# Categories help preserve meaning during NLP processing
+# Items detected by this dictionary are NOT removed — they are only marked
+
+вата:
+  category: political_slang
+  note: derogatory term whose meaning depends on context
+
+ватник:
+  category: political_slang
+  note: derogatory term for a Russian nationalist / pro-government person
+
+либераха:
+  category: political_slang
+  note: derogatory term for a liberal
+
+совок:
+  category: political_slang
+  note: derogatory term for a Soviet-minded person or the Soviet system
+
+левак:
+  category: political_slang
+  note: derogatory term for a leftist
+
+кремлебот:
+  category: political_slang
+  note: derogatory term for a pro-Kremlin commenter/bot
+
+буржуй:
+  category: political_slang
+  note: derogatory term for a bourgeois / wealthy person
+
+нацик:
+  category: political_slang
+  note: derogatory term for a nationalist / neo-Nazi
+
+фашик:
+  category: political_slang
+  note: derogatory term for a fascist
+
+зетник:
+  category: political_slang
+  note: derogatory term for a supporter of the "Z" symbol / pro-war
+
+укроп:
+  category: political_slang
+  note: derogatory term for a Ukrainian nationalist
+
+хохол:
+  category: political_slang
+  note: derogatory ethnic slur for a Ukrainian
+
+кацап:
+  category: political_slang
+  note: derogatory ethnic slur for a Russian
+
+москаль:
+  category: political_slang
+  note: derogatory ethnic slur for a Russian / Muscovite
+
+бандеровец:
+  category: political_slang
+  note: derogatory term for a Ukrainian nationalist (Bandera follower)
+
+петух:
+  category: prison_slang
+  note: prison slang — highly derogatory, used as insult in political discourse
+
+черт:
+  category: prison_slang
+  note: prison slang for lower-caste inmate
+
+обиженный:
+  category: prison_slang
+  note: prison slang, used in political contexts as insult
+
+путиноид:
+  category: political_slang
+  note: derogatory term for a Putin supporter
+
+либерда:
+  category: political_slang
+  note: derogatory term for liberal-minded people (collective)
+
+навальнист:
+  category: political_slang
+  note: term for Navalny supporter, can be neutral or derogatory depending on context
+
+ждун:
+  category: political_slang
+  note: derogatory term for a passive person waiting for change
+
+колорад:
+  category: political_slang
+  note: derogatory term for pro-Russian separatist / nationalist
+
+вышиватник:
+  category: political_slang
+  note: derogatory term for a Ukrainian patriot
+
+скакун:
+  category: political_slang
+  note: derogatory term for a Ukrainian nationalist
+
+правосек:
+  category: political_slang
+  note: derogatory term for a member of Ukrainian far-right groups
+
+соросёнок:
+  category: political_slang
+  note: derogatory term for a Soros-funded NGO activist / liberal
+
+госдеп:
+  category: political_slang
+  note: used derogatorily to imply someone is US State Dept funded
+
+пятая колонна:
+  category: political_slang
+  note: term for internal opposition perceived as foreign agents
+  multiword: true
+
+иноагент:
+  category: political_slang
+  note: foreign agent — official legal term often used as insult
+
+терпила:
+  category: political_slang
+  note: derogatory term for a person who tolerates injustice
+
+ябатька:
+  category: political_slang
+  note: derogatory term for Lukashenko (Belarus president)
+
+клоун:
+  category: political_slang
+  note: often used as derogatory reference to Zelensky or politicians
+
+чертила:
+  category: prison_slang
+  note: prison slang, derogatory
+
+чурка:
+  category: ethnic_slur
+  note: derogatory ethnic slur for Central Asian / Caucasian people
+
+хач:
+  category: ethnic_slur
+  note: derogatory ethnic slur for Caucasian people
+
+жид:
+  category: ethnic_slur
+  note: derogatory ethnic slur for Jewish people
+
+чурбан:
+  category: ethnic_slur
+  note: derogatory ethnic slur for Central Asian people
+
+черножопый:
+  category: ethnic_slur
+  note: derogatory racial slur
+
+# Note: this dictionary is meant for detection only.
+# Words should NOT be removed, censored, or replaced in cleaned_text.
+# They are only flagged in detected_terms metadata.

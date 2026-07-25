@@ -1,0 +1,70 @@
+# Comment Cleaner — Example Configuration
+# All processing rules are configurable via this file.
+
+input:
+  type: jsonl          # jsonl | sqlite
+  path: data/comments.jsonl
+
+  # Column mapping for database sources
+  column_mapping:
+    message_id: message_id
+    user_id: user_id
+    chat_id: chat_id
+    timestamp: timestamp
+    text: text
+    reply_to_message_id: reply_to_message_id
+    forwarded_from: forwarded_from
+    message_type: message_type
+
+output:
+  path: output/cleaned.jsonl
+  error_path: output/errors.jsonl
+  batch_size: 1000
+  resume: false
+  progress: true
+
+normalization:
+  unicode_form: NFC
+  max_repeated_letters: 3
+  max_repeated_punctuation: 3
+  max_repeated_brackets: 3
+  preserve_emoji: true
+  preserve_hashtags: true
+
+urls:
+  replace_with_marker: true
+  marker: "[URL]"
+  save_domain: true
+
+mentions:
+  replace_with_marker: true
+  marker: "[MENTION]"
+
+duplicates:
+  mode: mark             # keep | mark | collapse
+  fuzzy_enabled: false
+  fuzzy_threshold: 95
+
+context:
+  load_reply_context: true
+  max_reply_depth: 1
+
+filtering:
+  remove_system_messages: false
+  remove_bot_messages: false
+  remove_low_information: false
+
+privacy:
+  pseudonymize_user_ids: false
+  salt_env_variable: "USER_ID_HASH_SALT"
+
+sarcasm_detection:
+  enabled: true
+  signals:
+    - "/s"
+    - "ну да, конечно"
+    - "ага, конечно"
+    - "конечно, конечно"
+    - "разумеется"
+
+processing_version: "1.0.0"

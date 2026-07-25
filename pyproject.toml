@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comment-cleaner"
+version = "1.0.0"
+description = "Preprocessing pipeline for Russian-language Telegram comments"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+dependencies = [
+    "pydantic>=2.10",
+    "sqlalchemy>=2.0",
+    "pyyaml>=6.0",
+    "typer>=0.15",
+    "rich>=13.0",
+    "rapidfuzz>=3.0",
+    "structlog>=24.0",
+]
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.14",
+    "aiosqlite>=0.20",
+]
+[project.scripts]
+comment-cleaner = "comment_cleaner.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH", "RUF"]
+ignore = ["E501", "RUF001", "TC001", "TC003"]
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+[[tool.mypy.overrides]]
+module = ["typer", "rapidfuzz.*", "structlog.*", "aiosqlite.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/comment_cleaner"]
+addopts = "-rsx --tb=short"
+
+[tool.coverage.run]
+source = ["comment_cleaner"]
+omit = [
+    "src/comment_cleaner/__main__.py",
+    "src/comment_cleaner/cli.py",
+    "src/comment_cleaner/statistics.py",
+    "src/comment_cleaner/loaders/database_loader.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+]

@@ -1,0 +1,62 @@
+# Patterns for detecting bot and system messages in Telegram
+
+bot_username_patterns:
+  - "[Bb]ot$"
+  - "_bot$"
+  - "_bot_"
+  - "Bot$"
+  - "Robot$"
+
+system_message_patterns:
+  # Join/leave notifications
+  - "joined the group"
+  - "left the group"
+  - "присоединился"
+  - "присоединилась"
+  - "покинул"
+  - "покинула"
+  - "добавил"
+  - "добавила"
+  - "удалил"
+  - "удалила"
+  - "заблокировал"
+  - "заблокировала"
+  # Channel changes
+  - "changed the group name"
+  - "changed the group photo"
+  - "изменил название"
+  - "изменила название"
+  - "изменил фото"
+  - "изменила фото"
+  - "pinned a message"
+  - "закрепил сообщение"
+  - "закрепила сообщение"
+  # Group creation
+  - "created the group"
+  - "создал группу"
+  - "создала группу"
+  # Voice/video chat
+  - "started a voice chat"
+  - "started a video chat"
+  - "начал голосовой чат"
+  - "начал видеозвонок"
+  - "ended the voice chat"
+  - "ended the video chat"
+  - "завершил голосовой чат"
+  - "завершил видеозвонок"
+
+bot_message_patterns:
+  # Common bot command prefixes
+  - "^/"
+  - "^!"
+  - "^\\."
+  # Common bot welcome messages
+  - "Welcome to"
+  - "Добро пожаловать"
+  - "This is an automated message"
+  - "Это автоматическое сообщение"
+  # Common template patterns
+  - "You have been muted"
+  - "You have been banned"
+  - "Вы были забанены"
+  - "Вы были заблокированы"

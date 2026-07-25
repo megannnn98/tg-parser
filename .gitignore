@@ -3,3 +3,5 @@ __pycache__
 *.db
 my_session.session
 out.txt
+.coverage
+*.egg-info/
