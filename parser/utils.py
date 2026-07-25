@@ -14,7 +14,7 @@ def parse_args():
         "mode",
         nargs="?",
         default="collect",
-        choices=["collect", "haters"],
+        choices=["collect"],
         help="Run mode"
     )
 
