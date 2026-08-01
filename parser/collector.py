@@ -17,7 +17,7 @@ from parser.storage import (
     upsert_channels_many,
     upsert_users_many,
 )
-from parser.telegram import fetch_messages, get_client
+from parser.telegram import fetch_messages, get_chat_with_retry, get_client
 
 
 _QUEUE_CHANNEL = "channel"
@@ -110,7 +110,7 @@ async def collect_channel(
     fetch_messages_fn: Callable,
     logger,
 ):
-    channel = await tg_client.get_chat(channel_username)
+    channel = await get_chat_with_retry(tg_client, channel_username, logger)
     if not channel.linked_chat:
         logger.warning(f"Channel {channel_username} has no linked discussion")
         return
@@ -121,7 +121,7 @@ async def collect_channel(
     async for msg in fetch_messages_fn(tg_client, channel.linked_chat.id):
         tg_id = msg["tg_id"]
         username = msg["username"]
-        if seen_users.get(tg_id) != username:
+        if tg_id not in seen_users or seen_users[tg_id] != username:
             await queue.put((_QUEUE_USER, tg_id, username))
             seen_users[tg_id] = username
 

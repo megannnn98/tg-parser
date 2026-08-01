@@ -3,3 +3,6 @@ __pycache__
 *.db
 my_session.session
 out.txt
+/data/telegram-comments-classify.log
+/data/telegram-comments-translate.log
+/data
