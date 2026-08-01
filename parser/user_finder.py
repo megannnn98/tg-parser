@@ -4,13 +4,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from parser.channel_sweep import resolve_channel_context, sweep_channels
 from parser.logger import get_logger
 from parser.measure_time import measure_time
 from parser.telegram import (
     FATAL_TG_ERRORS,
+    TelegramUser,
     find_chat_members,
     find_history_authors,
-    get_chat_with_retry,
     get_client,
 )
 from parser.utils import join_name
@@ -69,14 +70,14 @@ def format_found_users(found: list[FoundUser]) -> str:
     return "\n".join([*table, "", "Собрать комментарии:", *commands])
 
 
-def _merge(found: dict[int, FoundUser], row: dict, channel: str, source: str):
-    user = found.get(row["tg_id"])
+def _merge(found: dict[int, FoundUser], row: TelegramUser, channel: str, source: str):
+    user = found.get(row.tg_id)
     if user is None:
         user = FoundUser(
-            tg_id=row["tg_id"],
-            username=row["username"],
-            first_name=row["first_name"],
-            last_name=row["last_name"],
+            tg_id=row.tg_id,
+            username=row.username,
+            first_name=row.first_name,
+            last_name=row.last_name,
         )
         found[user.tg_id] = user
 
@@ -95,12 +96,11 @@ async def search_channel(
     find_history_authors_fn: Callable,
     logger,
 ) -> int:
-    channel = await get_chat_with_retry(tg_client, channel_username, logger)
-    if not channel.linked_chat:
-        logger.warning(f"Channel {channel_username} has no linked discussion")
+    channel = await resolve_channel_context(tg_client, channel_username, logger)
+    if channel is None:
         return 0
 
-    chat_id = channel.linked_chat.id
+    chat_id = channel.linked_chat_id
     hits = 0
 
     try:
@@ -144,31 +144,27 @@ async def find_users(
 
     logger = deps.logger_factory("user_finder")
     found: dict[int, FoundUser] = {}
-    failed = 0
 
     tg_client = deps.tg_client_factory()
     async with tg_client:
-        for channel_username in cfg.channels:
-            try:
-                await search_channel(
-                    tg_client=tg_client,
-                    channel_username=channel_username,
-                    query=query,
-                    found=found,
-                    find_chat_members_fn=deps.find_chat_members_fn,
-                    find_history_authors_fn=deps.find_history_authors_fn,
-                    logger=logger,
-                )
-            except FATAL_TG_ERRORS:
-                logger.error(
-                    f"[{channel_username}] fatal session error, aborting search"
-                )
-                raise
-            except Exception:
-                failed += 1
-                logger.exception(f"[{channel_username}] failed, skipped")
+        async def one(channel_username: str) -> None:
+            await search_channel(
+                tg_client=tg_client,
+                channel_username=channel_username,
+                query=query,
+                found=found,
+                find_chat_members_fn=deps.find_chat_members_fn,
+                find_history_authors_fn=deps.find_history_authors_fn,
+                logger=logger,
+            )
 
-    if failed:
-        logger.warning(f"{failed} of {len(cfg.channels)} channels failed")
+        await sweep_channels(
+            cfg.channels,
+            logger,
+            one,
+            fatal_message=lambda channel_username: (
+                f"[{channel_username}] fatal session error, aborting search"
+            ),
+        )
 
     return sorted(found.values(), key=lambda user: user.tg_id)

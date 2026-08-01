@@ -5,13 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from parser.channel_sweep import resolve_channel_context, sweep_channels
 from parser.logger import get_logger
 from parser.measure_time import measure_time
 from parser.storage import get_db
 from parser.telegram import (
-    FATAL_TG_ERRORS,
     fetch_user_messages,
-    get_chat_with_retry,
     get_client,
     resolve_user,
 )
@@ -41,9 +40,8 @@ async def collect_user_channel(
     fetch_user_messages_fn: Callable,
     logger,
 ) -> int:
-    channel = await get_chat_with_retry(tg_client, channel_username, logger)
-    if not channel.linked_chat:
-        logger.warning(f"Channel {channel_username} has no linked discussion")
+    channel = await resolve_channel_context(tg_client, channel_username, logger)
+    if channel is None:
         return 0
 
     rows = [
@@ -51,12 +49,12 @@ async def collect_user_channel(
             tg_id,
             username,
             channel_username,
-            msg["message_id"],
-            msg["text"],
-            msg["date"],
+            msg.message_id,
+            msg.text,
+            msg.date,
         )
         async for msg in fetch_user_messages_fn(
-            tg_client, channel.linked_chat.id, tg_id
+            tg_client, channel.linked_chat_id, tg_id
         )
     ]
 
@@ -91,54 +89,51 @@ async def collect_user_comments(
 
     logger = deps.logger_factory("user_collector")
     saved = 0
-    failed = 0
 
     tg_client = deps.tg_client_factory()
     async with tg_client:
         # Resolve first: the db file is named after the user, and an unresolvable
         # user must not leave an empty database behind.
         resolved = await deps.resolve_user_fn(tg_client, user_ref)
-        tg_id = resolved["tg_id"]
-        username = resolved["username"]
+        tg_id = resolved.tg_id
+        username = resolved.username
         logger.info(
             f"Resolved {user_ref} -> tg_id={tg_id}, username={username}, "
-            f"name={join_name(resolved['first_name'], resolved['last_name'])!r}"
+            f"name={join_name(resolved.first_name, resolved.last_name)!r}"
         )
 
         db_path = db_path_override or data_dir / user_db_filename(
             tg_id,
             username,
-            resolved["first_name"],
-            resolved["last_name"],
+            resolved.first_name,
+            resolved.last_name,
         )
         db = await get_db(db_path)
         try:
             await init_user_db(db)
 
-            for channel_username in cfg.channels:
-                try:
-                    saved += await collect_user_channel(
-                        db=db,
-                        tg_client=tg_client,
-                        channel_username=channel_username,
-                        tg_id=tg_id,
-                        username=username,
-                        fetch_user_messages_fn=deps.fetch_user_messages_fn,
-                        logger=logger,
-                    )
-                except FATAL_TG_ERRORS:
-                    logger.error(
-                        f"[{channel_username}] fatal session error after saving "
-                        f"{saved} rows, aborting sweep"
-                    )
-                    raise
-                except Exception:
-                    failed += 1
-                    logger.exception(f"[{channel_username}] failed, skipped")
+            async def one(channel_username: str) -> None:
+                nonlocal saved
+                saved += await collect_user_channel(
+                    db=db,
+                    tg_client=tg_client,
+                    channel_username=channel_username,
+                    tg_id=tg_id,
+                    username=username,
+                    fetch_user_messages_fn=deps.fetch_user_messages_fn,
+                    logger=logger,
+                )
+
+            await sweep_channels(
+                cfg.channels,
+                logger,
+                one,
+                fatal_message=lambda channel_username: (
+                    f"[{channel_username}] fatal session error after saving "
+                    f"{saved} rows, aborting sweep"
+                ),
+            )
         finally:
             await db.close()
-
-    if failed:
-        logger.warning(f"{failed} of {len(cfg.channels)} channels failed")
 
     return db_path, saved

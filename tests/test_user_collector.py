@@ -10,6 +10,7 @@ from parser.user_collector import (
     UserCollectorDeps,
     collect_user_comments,
 )
+from parser.telegram import TelegramUser, UserComment
 
 
 class FakeTGClient:
@@ -57,15 +58,19 @@ def _chat(linked_chat_id: int | None):
 
 
 def _resolved(username="vasya", first_name=None, last_name=None, tg_id=555):
-    return {
-        "tg_id": tg_id,
-        "username": username,
-        "first_name": first_name,
-        "last_name": last_name,
-    }
+    return TelegramUser(
+        tg_id=tg_id,
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
+    )
 
 
-def _deps(tg_client, logger, messages: dict[int, list[dict]], resolved=None):
+def _comment(message_id: int, text: str, date: str) -> UserComment:
+    return UserComment(message_id=message_id, text=text, date=date)
+
+
+def _deps(tg_client, logger, messages: dict[int, list[UserComment]], resolved=None):
     resolved = _resolved() if resolved is None else resolved
 
     async def resolve_user_fn(_tg_client, user_ref):
@@ -115,8 +120,8 @@ def test_collect_user_comments_writes_rows_and_skips_channel_without_discussion(
     logger = FakeLogger()
     messages = {
         1001: [
-            {"message_id": 10, "text": "Первый КОММЕНТ", "date": "2025-02-01"},
-            {"message_id": 11, "text": "Второй", "date": "2025-02-02"},
+            _comment(10, "Первый КОММЕНТ", "2025-02-01"),
+            _comment(11, "Второй", "2025-02-02"),
         ]
     }
 
@@ -145,7 +150,7 @@ def test_collect_user_comments_writes_rows_and_skips_channel_without_discussion(
 
 def test_collect_user_comments_second_run_adds_no_duplicates(tmp_path: Path):
     messages = {
-        1001: [{"message_id": 10, "text": "Первый", "date": "2025-02-01"}],
+        1001: [_comment(10, "Первый", "2025-02-01")],
     }
 
     async def _run():
@@ -174,7 +179,7 @@ def test_collect_user_comments_second_run_adds_no_duplicates(tmp_path: Path):
 def test_collect_user_comments_names_db_by_display_name_without_username(
     tmp_path: Path,
 ):
-    messages = {1001: [{"message_id": 10, "text": "Первый", "date": "2025-02-01"}]}
+    messages = {1001: [_comment(10, "Первый", "2025-02-01")]}
 
     async def _run():
         return await collect_user_comments(
@@ -200,7 +205,7 @@ def test_collect_user_comments_names_db_by_display_name_without_username(
 def test_collect_user_comments_names_db_by_tg_id_without_username_or_name(
     tmp_path: Path,
 ):
-    messages = {1001: [{"message_id": 10, "text": "Первый", "date": "2025-02-01"}]}
+    messages = {1001: [_comment(10, "Первый", "2025-02-01")]}
 
     async def _run():
         return await collect_user_comments(
@@ -222,7 +227,7 @@ def test_collect_user_comments_names_db_by_tg_id_without_username_or_name(
 
 
 def test_collect_user_comments_prefers_username_over_display_name(tmp_path: Path):
-    messages = {1001: [{"message_id": 10, "text": "Первый", "date": "2025-02-01"}]}
+    messages = {1001: [_comment(10, "Первый", "2025-02-01")]}
 
     async def _run():
         return await collect_user_comments(
@@ -245,7 +250,7 @@ def test_collect_user_comments_prefers_username_over_display_name(tmp_path: Path
 
 
 def test_collect_user_comments_honours_db_path_override(tmp_path: Path):
-    messages = {1001: [{"message_id": 10, "text": "Первый", "date": "2025-02-01"}]}
+    messages = {1001: [_comment(10, "Первый", "2025-02-01")]}
     override = tmp_path / "nested" / "custom.db"
 
     async def _run():
@@ -294,7 +299,7 @@ def test_collect_user_comments_keeps_going_after_channel_error(tmp_path: Path):
 
     tg_client = BrokenChatClient({"chan_a": _chat(1001)})
     logger = FakeLogger()
-    messages = {1001: [{"message_id": 10, "text": "Первый", "date": "2025-02-01"}]}
+    messages = {1001: [_comment(10, "Первый", "2025-02-01")]}
 
     async def _run():
         db_path, saved = await collect_user_comments(
@@ -353,8 +358,8 @@ def test_collect_user_comments_reports_saved_rows_before_fatal_abort(tmp_path: P
     logger = FakeLogger()
     messages = {
         1001: [
-            {"message_id": 10, "text": "Первый", "date": "2025-02-01"},
-            {"message_id": 11, "text": "Второй", "date": "2025-02-02"},
+            _comment(10, "Первый", "2025-02-01"),
+            _comment(11, "Второй", "2025-02-02"),
         ]
     }
 

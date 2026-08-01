@@ -9,14 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from parser.channel_sweep import resolve_channel_context, sweep_channels
 from parser.logger import get_logger
 from parser.measure_time import measure_time
 from parser.telegram import (
+    ChannelInfo,
     FATAL_TG_ERRORS,
     FloodWait,
     describe_channel,
     fetch_mentions,
-    get_chat_with_retry,
     get_client,
 )
 
@@ -104,22 +105,26 @@ async def scan_channel(
     fetch_mentions_fn: Callable,
     logger,
 ) -> Counter[str]:
-    channel = await get_chat_with_retry(tg_client, channel_username, logger)
-
-    sources = [channel.id]
-    if channel.linked_chat:
-        sources.append(channel.linked_chat.id)
-    else:
-        logger.warning(
+    channel = await resolve_channel_context(
+        tg_client,
+        channel_username,
+        logger,
+        require_discussion=False,
+        no_discussion_message=(
             f"Channel {channel_username} has no linked discussion, posts only"
-        )
+        ),
+    )
+
+    sources = [channel.chat.id]
+    if channel.linked_chat_id is not None:
+        sources.append(channel.linked_chat_id)
 
     mentions: Counter[str] = Counter()
     for chat_id in sources:
         async for row in fetch_mentions_fn(tg_client, chat_id):
-            if row["forward_channel"]:
-                mentions[row["forward_channel"].casefold()] += 1
-            for username in extract_usernames(row["text"]):
+            if row.forward_channel:
+                mentions[row.forward_channel.casefold()] += 1
+            for username in extract_usernames(row.text):
                 mentions[username] += 1
 
     logger.info(f"[{channel_username}] {len(mentions)} candidate(s) mentioned")
@@ -131,7 +136,7 @@ async def check_candidate(
     tg_client,
     username: str,
     logger,
-) -> dict | None:
+) -> ChannelInfo | None:
     try:
         return await deps.describe_channel_fn(tg_client, username)
     except FloodWait as exc:
@@ -160,28 +165,27 @@ async def discover_channels(
     logger = deps.logger_factory("channel_discovery")
     known = {channel.casefold() for channel in cfg.channels}
     mentions: Counter[str] = Counter()
-    failed = 0
 
     tg_client = deps.tg_client_factory()
     async with tg_client:
-        for channel_username in cfg.channels:
-            try:
-                mentions.update(
-                    await scan_channel(
-                        tg_client=tg_client,
-                        channel_username=channel_username,
-                        fetch_mentions_fn=deps.fetch_mentions_fn,
-                        logger=logger,
-                    )
+        async def one(channel_username: str) -> None:
+            mentions.update(
+                await scan_channel(
+                    tg_client=tg_client,
+                    channel_username=channel_username,
+                    fetch_mentions_fn=deps.fetch_mentions_fn,
+                    logger=logger,
                 )
-            except FATAL_TG_ERRORS:
-                logger.error(
-                    f"[{channel_username}] fatal session error, aborting discovery"
-                )
-                raise
-            except Exception:
-                failed += 1
-                logger.exception(f"[{channel_username}] failed, skipped")
+            )
+
+        await sweep_channels(
+            cfg.channels,
+            logger,
+            one,
+            fatal_message=lambda channel_username: (
+                f"[{channel_username}] fatal session error, aborting discovery"
+            ),
+        )
 
         # Known channels are not candidates: this also drops the self-reposts
         # every discussion carries from its own channel.
@@ -214,11 +218,8 @@ async def discover_channels(
 
             added.append(username)
             logger.info(
-                f"+ @{username} — {info['title']!r}, "
-                f"{info['members']} members, {count} mention(s)"
+                f"+ @{username} — {info.title!r}, "
+                f"{info.members} members, {count} mention(s)"
             )
-
-    if failed:
-        logger.warning(f"{failed} of {len(cfg.channels)} channels failed")
 
     return added
