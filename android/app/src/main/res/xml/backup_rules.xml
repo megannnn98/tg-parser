@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    fullBackupContent (API < 31). On API 31+ the system falls back to this
+    file when dataExtractionRules is not set, so a single file is enough to
+    cover all minSdk..targetSdk here.
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="." />
+</full-backup-content>

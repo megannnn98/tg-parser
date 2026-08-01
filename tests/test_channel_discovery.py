@@ -13,6 +13,7 @@ from parser.channel_discovery import (
     discover_channels,
     extract_usernames,
 )
+from parser.telegram import ChannelInfo, MentionRow
 
 
 @pytest.mark.parametrize(
@@ -116,7 +117,11 @@ def _deps(
     async def describe_channel_fn(_tg_client, username):
         if usable is not None and username not in usable:
             return None
-        return {"username": username, "title": f"Title {username}", "members": 100}
+        return ChannelInfo(
+            username=username,
+            title=f"Title {username}",
+            members=100,
+        )
 
     return DiscoveryDeps(
         tg_client_factory=lambda: tg_client,
@@ -127,7 +132,7 @@ def _deps(
 
 
 def _row(forward=None, text=None):
-    return {"forward_channel": forward, "text": text}
+    return MentionRow(forward_channel=forward, text=text)
 
 
 def test_discover_scans_both_the_channel_and_its_discussion():
@@ -292,7 +297,7 @@ def test_discover_waits_out_flood_wait_and_retries_the_candidate():
         attempts.append(username)
         if len(attempts) == 1:
             raise FakeFloodWait(21)
-        return {"username": username, "title": "Wanted", "members": 10}
+        return ChannelInfo(username=username, title="Wanted", members=10)
 
     found = asyncio.run(
         discover_channels(
@@ -319,7 +324,7 @@ def test_discover_gives_up_on_candidate_that_floods_twice():
         attempts.append(username)
         if username == "stubborn_one":
             raise FakeFloodWait(5)
-        return {"username": username, "title": "Other", "members": 10}
+        return ChannelInfo(username=username, title="Other", members=10)
 
     found = asyncio.run(
         discover_channels(
@@ -348,7 +353,7 @@ def test_discover_logs_found_channels_when_session_dies_while_validating():
 
     async def describe_channel_fn(_tg_client, username):
         if username == "popular_one":
-            return {"username": username, "title": "Popular", "members": 10}
+            return ChannelInfo(username=username, title="Popular", members=10)
         raise FakeUnauthorized("SESSION_REVOKED")
 
     deps = DiscoveryDeps(

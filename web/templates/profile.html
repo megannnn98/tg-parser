@@ -30,13 +30,102 @@
       color: var(--accent);
       text-decoration: none;
     }
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
     .back {
       display: inline-flex;
       align-items: center;
       min-height: 32px;
-      margin-bottom: 18px;
       font-size: 14px;
       font-weight: 600;
+    }
+    .page-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 14px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .btn:hover {
+      border-color: var(--accent);
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .progress {
+      margin-bottom: 20px;
+    }
+    .progress-status {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .bar-block {
+      margin: 12px 0;
+    }
+    .bar-label {
+      margin: 0 0 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .bar-track {
+      position: relative;
+      height: 8px;
+      border-radius: 4px;
+      background: var(--line);
+      overflow: hidden;
+    }
+    .bar-fill {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+    .bar-fill--indeterminate {
+      width: 30%;
+      transition: none;
+      animation: bar-slide 1.2s ease-in-out infinite;
+    }
+    @keyframes bar-slide {
+      0% { left: -30%; }
+      100% { left: 100%; }
+    }
+    .progress-failed {
+      margin: 12px 0 0;
+      padding: 0;
+      list-style: none;
+      font-size: 14px;
+    }
+    .progress-failed li {
+      padding: 4px 0;
+      color: #dc2626;
+    }
+    .collect-error {
+      margin: 0 0 20px;
+      color: #dc2626;
+      font-size: 14px;
     }
     .summary {
       display: grid;
@@ -176,7 +265,34 @@
 </head>
 <body>
   <main>
-    <a class="back" href="{{ request.url_for('index') }}">← все пользователи</a>
+    <div class="page-header">
+      <a class="back" href="{{ request.url_for('index') }}">← все пользователи</a>
+      <div class="page-actions">
+        <a class="btn" href="{{ request.url_for('export_user_comments', db_name=profile.db_name) }}">Скачать .txt</a>
+        <button id="refresh-button" class="btn" type="button">Обновить комментарии</button>
+      </div>
+    </div>
+
+    <div id="refresh-progress" class="progress" hidden>
+      <p id="refresh-status" class="progress-status"></p>
+
+      <div class="bar-block">
+        <p id="refresh-channel-label" class="bar-label"></p>
+        <div class="bar-track">
+          <div id="refresh-channel-bar" class="bar-fill"></div>
+        </div>
+      </div>
+
+      <div class="bar-block">
+        <p id="refresh-overall-label" class="bar-label"></p>
+        <div class="bar-track">
+          <div id="refresh-overall-bar" class="bar-fill"></div>
+        </div>
+      </div>
+
+      <ul id="refresh-failed" class="progress-failed"></ul>
+    </div>
+    <p id="refresh-error" class="collect-error" hidden></p>
 
     <section class="summary">
       <div>
@@ -242,5 +358,171 @@
       </table>
     </section>
   </main>
+
+  <script>
+    (function () {
+      const userRef = {{ (profile.username and ("@" + profile.username) or profile.tg_id) | tojson }};
+      const button = document.getElementById("refresh-button");
+      const progress = document.getElementById("refresh-progress");
+      const statusEl = document.getElementById("refresh-status");
+      const errorEl = document.getElementById("refresh-error");
+      const channelLabel = document.getElementById("refresh-channel-label");
+      const channelBar = document.getElementById("refresh-channel-bar");
+      const overallLabel = document.getElementById("refresh-overall-label");
+      const overallBar = document.getElementById("refresh-overall-bar");
+      const failedEl = document.getElementById("refresh-failed");
+
+      function updateBars(job) {
+        const current = job.channels.find(function (ch) { return ch.status === "started"; });
+        if (current) {
+          channelLabel.textContent = "Читаю канал: " + current.channel;
+          channelBar.className = "bar-fill bar-fill--indeterminate";
+        } else {
+          channelLabel.textContent = job.state === "done" ? "Готово" : "";
+          channelBar.className = "bar-fill";
+          channelBar.style.width = job.state === "done" ? "100%" : "0%";
+        }
+
+        const total = job.total_channels || job.channels.length;
+        const completed = job.channels.filter(function (ch) {
+          return ch.status !== "started";
+        }).length;
+        if (total > 0) {
+          overallLabel.textContent = completed + " из " + total + " каналов";
+          overallBar.style.width = Math.round((completed / total) * 100) + "%";
+        } else {
+          overallLabel.textContent = completed + " каналов";
+          overallBar.style.width = "0%";
+        }
+      }
+
+      function renderFailedChannels(channels) {
+        failedEl.innerHTML = "";
+        channels
+          .filter(function (ch) { return ch.status === "failed"; })
+          .forEach(function (ch) {
+            const li = document.createElement("li");
+            li.textContent = ch.channel + (ch.error ? " — " + ch.error : "");
+            failedEl.appendChild(li);
+          });
+      }
+
+      function describeUser(resolved) {
+        if (!resolved) {
+          return "Резолвим пользователя…";
+        }
+        const name = resolved.username ? "@" + resolved.username : (resolved.display_name || resolved.tg_id);
+        return "Пользователь: " + name;
+      }
+
+      let currentJobId = null;
+
+      function resetButton() {
+        currentJobId = null;
+        button.disabled = false;
+        button.textContent = "Обновить комментарии";
+      }
+
+      const MAX_POLL_FAILURES = 10;
+
+      function poll(jobId, failures) {
+        failures = failures || 0;
+        fetch("/collect/" + jobId + "/status")
+          .then(function (resp) {
+            if (!resp.ok) {
+              throw new Error("status " + resp.status);
+            }
+            return resp.json();
+          })
+          .then(function (job) {
+            statusEl.textContent = describeUser(job.resolved);
+            updateBars(job);
+            renderFailedChannels(job.channels);
+
+            if (job.state === "running") {
+              setTimeout(function () { poll(jobId, 0); }, 1000);
+              return;
+            }
+
+            if (job.state === "done") {
+              statusEl.textContent = "Готово: сохранено " + job.saved_total + " новых сообщений";
+              window.location.href = "/users/" + job.db_name;
+              return;
+            }
+
+            resetButton();
+            errorEl.hidden = false;
+            errorEl.textContent = "Ошибка: " + job.error;
+          })
+          .catch(function () {
+            if (failures + 1 >= MAX_POLL_FAILURES) {
+              resetButton();
+              errorEl.hidden = false;
+              errorEl.textContent = "Не удалось получить статус сбора, попробуйте ещё раз";
+              return;
+            }
+            setTimeout(function () { poll(jobId, failures + 1); }, 1000);
+          });
+      }
+
+      function startCollect() {
+        errorEl.hidden = true;
+        progress.hidden = false;
+        failedEl.innerHTML = "";
+        channelLabel.textContent = "";
+        channelBar.className = "bar-fill";
+        channelBar.style.width = "0%";
+        overallLabel.textContent = "";
+        overallBar.style.width = "0%";
+        statusEl.textContent = "Запуск…";
+        button.disabled = true;
+
+        fetch("/collect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: String(userRef) }),
+        })
+          .then(function (resp) {
+            if (!resp.ok) {
+              return resp.json().then(function (body) {
+                throw new Error(body.detail || "Не удалось запустить сбор");
+              });
+            }
+            return resp.json();
+          })
+          .then(function (data) {
+            currentJobId = data.job_id;
+            button.disabled = false;
+            button.textContent = "Остановить";
+            poll(data.job_id);
+          })
+          .catch(function (err) {
+            resetButton();
+            errorEl.hidden = false;
+            errorEl.textContent = err.message;
+          });
+      }
+
+      function cancelCollect() {
+        button.disabled = true;
+        // Errors here are ignored on purpose: the status poll loop is the
+        // single source of truth for the job's outcome, and re-enabling the
+        // button lets the user just click "Остановить" again.
+        fetch("/collect/" + currentJobId + "/cancel", { method: "POST" })
+          .catch(function () {})
+          .then(function () {
+            button.disabled = false;
+          });
+      }
+
+      button.addEventListener("click", function () {
+        if (currentJobId) {
+          cancelCollect();
+        } else {
+          startCollect();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

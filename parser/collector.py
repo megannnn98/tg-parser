@@ -4,10 +4,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Awaitable, Callable, Iterable, Protocol
+from typing import Callable, Protocol
 
 import aiosqlite
 
+from parser.channel_sweep import resolve_channel_context
 from parser.logger import get_logger
 from parser.measure_time import measure_time
 from parser.storage import (
@@ -17,7 +18,7 @@ from parser.storage import (
     upsert_channels_many,
     upsert_users_many,
 )
-from parser.telegram import fetch_messages, get_chat_with_retry, get_client
+from parser.telegram import fetch_messages, get_client
 
 
 _QUEUE_CHANNEL = "channel"
@@ -110,22 +111,21 @@ async def collect_channel(
     fetch_messages_fn: Callable,
     logger,
 ):
-    channel = await get_chat_with_retry(tg_client, channel_username, logger)
-    if not channel.linked_chat:
-        logger.warning(f"Channel {channel_username} has no linked discussion")
+    channel = await resolve_channel_context(tg_client, channel_username, logger)
+    if channel is None:
         return
 
     await queue.put((_QUEUE_CHANNEL, channel_username))
     seen_users: dict[int, str | None] = {}
 
-    async for msg in fetch_messages_fn(tg_client, channel.linked_chat.id):
-        tg_id = msg["tg_id"]
-        username = msg["username"]
+    async for msg in fetch_messages_fn(tg_client, channel.linked_chat_id):
+        tg_id = msg.tg_id
+        username = msg.username
         if tg_id not in seen_users or seen_users[tg_id] != username:
             await queue.put((_QUEUE_USER, tg_id, username))
             seen_users[tg_id] = username
 
-        await queue.put((_QUEUE_MESSAGE, (tg_id, channel_username, msg["text"], msg["date"])))
+        await queue.put((_QUEUE_MESSAGE, (tg_id, channel_username, msg.text, msg.date)))
 
 
 @measure_time(name="collect_db")

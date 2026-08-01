@@ -58,7 +58,6 @@ def parse_args():
         default="collect",
         choices=[
             "collect",
-            "haters",
             "user-comments",
             "find-user",
             "discover-channels",

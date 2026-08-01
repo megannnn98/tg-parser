@@ -7,7 +7,6 @@
 | Режим | Что делает | Куда пишет |
 |---|---|---|
 | `collect` | Проходит историю обсуждений всех каналов из `channels.json` | `DB_PATH` (`data/app.db`) |
-| `haters` | Печатает статистику по хейт-словам по уже собранным данным | читает `DB_PATH` |
 | `user-comments <@username\|tg_id>` | Проходит все каналы, но забирает комментарии только одного пользователя | отдельный файл на пользователя (см. ниже) |
 | `find-user <строка>` | Ищет `tg_id` и `@username` по части имени или ника | только печатает найденное |
 | `discover-channels` | Ищет новые каналы по упоминаниям и репостам в текущем списке | дописывает `channels.json` |
@@ -193,6 +192,211 @@ sqlite3 data/mega_palez_<tg_id>.db \
 `app.db` в списке профилей не показывается: это общая база режима `collect`, а web UI
 ищет только таблицу `user_messages`.
 
+## Android-клиент
+
+В каталоге `android/` лежит отдельный Gradle-модуль — минималистичный APK, который
+открывает этот web UI во встроенном `WebView`. Приложение не дублирует логику
+парсера: список каналов, скачивание комментариев, профиль пользователя — всё
+остаётся на стороне FastAPI. Нативная часть только одна — экран настроек, куда
+вписывается URL бэкенда. Подробности сборки и ограничений — в
+[`android/README.md`](android/README.md).
+
+### Что нужно для запуска
+
+1. **Где-то уже работает FastAPI-сервер `telegram-comments`** (см. раздел выше).
+   Если телефон подключается к компьютеру по Wi-Fi, поднимайте сервер на `0.0.0.0`,
+   иначе он слышит только `127.0.0.1`:
+   ```
+   WEB_PORT=8000 .venv/bin/python -m uvicorn web.app:app --host 0.0.0.0 --port 8000
+   ```
+   IP компьютера на локальной сети смотрят так:
+   ```
+   ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}'
+   ```
+   Допустим, получилось `192.168.1.5` — тогда URL для APK:
+   `http://192.168.1.5:8000`.
+
+2. **APK собран и установлен на телефон** (Android 8.0/API 26 и выше). Сборка —
+   через Android Studio (`File → Open` каталога `android/`, далее `Build → Build
+   APK(s)`) или из CLI:
+   ```
+   echo "sdk.dir=$HOME/Android/Sdk" > android/local.properties
+   (cd android && ./gradlew assembleDebug)
+   ```
+   Готовый файл — `android/app/build/outputs/apk/debug/app-debug.apk`.
+   Нужны JDK 17 (JBR из Android Studio подходит, JDK 26 — нет) и Android SDK с
+   `platforms;android-35` и `build-tools;35.0.x`. При установке на телефон
+   разрешите «установку из неизвестных источников».
+
+### Установка APK через adb (альтернатива sideload)
+
+Если на компьютере есть Android SDK Platform Tools, быстрее ставить APK через
+`adb`, а не через файл-менеджер с разрешением «установка из неизвестных
+источников».
+
+1. Включите на телефоне отладку по USB: *Настройки → О телефоне* → тапнуть
+   «Номер сборки» 7 раз, затем *Настройки → Система → Для разработчиков →
+   Отладка по USB*.
+2. Подключите телефон кабелем, разрешите отладку в появившемся диалоге.
+3. На компьютере:
+   ```
+   adb install android/app/build/outputs/apk/debug/app-debug.apk
+   ```
+   После пересборки — `adb install -r ...` (заменяет установленную копию,
+   сохраняя данные приложения, включая сохранённый URL).
+4. Логи APK и WebView — через `adb logcat` (см. раздел «Логи и отладка»).
+
+`adb` входит в `android-sdk/platform-tools/`; отдельная загрузка — на
+[developer.android.com/studio/releases/platform-tools](https://developer.android.com/studio/releases/platform-tools).
+
+### Первый запуск
+
+1. Откройте приложение «Telegram Comments». При первом запуске появится экран
+   «Бэкенд не настроен».
+2. Тапните «Открыть настройки», введите URL бэкенда
+   (`http://192.168.1.5:8000` или `https://comments.example.ru`), нажмите
+   «Сохранить и открыть».
+3. Откроется главная страница web UI. Дальше всё как в браузере: список
+   пользователей, кнопка «Скачать комментарии по юзернейму», редактор списка
+   каналов.
+
+Back-кнопка ходит по истории WebView (а не закрывает приложение сразу). Меню
+(три точки) содержит «Обновить» и «Настройки». Если бэкенд недоступен —
+показывается экран ошибки с кнопкой «Обновить».
+
+### HTTPS и cleartext
+
+Приложение разрешает cleartext HTTP, чтобы работал адрес вида
+`http://192.168.1.5:8000` (см.
+[`android/app/src/main/res/xml/network_security_config.xml`](android/app/src/main/res/xml/network_security_config.xml)).
+Это безопасно внутри домашней сети; для публичного деплоя поднимите HTTPS на
+FastAPI или за reverse-proxy и впишите в настройки `https://...`. Самоподписанные
+сертификаты не поддерживаются — только системные.
+
+### Бэкенд на самом телефоне через Termux
+
+Если отдельного компьютера нет и FastAPI-сервер должен работать на самом
+телефоне, используйте **Termux** — нативный Linux-терминал под Android. Существующий
+Python-код (парсер, FastAPI, pyrogram) запускается в нём без изменений; WebView-APK
+на том же телефоне подключается к `http://127.0.0.1:8000`.
+
+1. **Поставьте Termux** — только версию с [F-Droid](https://f-droid.org/packages/com.termux/);
+   вариант в Google Play устарел и не обновляется.
+2. В Termux поставьте Python и git:
+   ```
+   pkg update && pkg install -y python git
+   ```
+3. Склонируйте репозиторий и поставьте зависимости:
+   ```
+   git clone https://github.com/megannnn98/tg-parser.git telegram-comments
+   cd telegram-comments
+   pip install -r requirements.txt
+   ```
+   Если `pip` упадёт на сборке `tgcrypto` (C-extension), либо поставьте
+   `pkg install -y build-essential clang` и повторите, либо удалите
+   `tgcrypto` из `requirements.txt` — pyrogram работает и без него через
+   `pyaes`, медленнее в несколько раз, но для личного использования
+   незаметно.
+4. **Один раз войдите в Telegram** интерактивно:
+   ```
+   cp .env.docker .env    # при желании поправьте API_ID/API_HASH/LIMIT
+   python main.py collect
+   ```
+   Pyrogram спросит номер телефона и код из основного приложения Telegram;
+   сессия сохранится в `my_session.session` внутри Termux.
+5. **Запустите web UI**:
+   ```
+   termux-wake-lock
+   python -m uvicorn web.app:app --host 127.0.0.1 --port 8000
+   ```
+   `termux-wake-lock` удерживает CPU активным, чтобы Android не убил процесс
+   в фоне. После остановки uvicorn отпустите блокировку: `termux-wake-unlock`.
+6. В WebView-приложении впишите URL `http://127.0.0.1:8000`.
+
+**Ограничения Termux-пути:**
+
+- Android всё равно может убить Termux при сильной нехватке памяти.
+  Долгие скачивания (`user-comments` на большом списке каналов,
+  `discover-channels`) запускайте с телефоном на зарядке и Termux в
+  foreground.
+- Автозапуск при загрузке телефона — отдельное приложение
+  [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot) со скриптом в
+  `~/.termux/boot/`.
+- Батарея: pyrogram держит WebSocket к Telegram открытым; расход заметный,
+  для длительных сессий — телефон на зарядку.
+- Повторный вход в ту же Telegram-аккаунт с телефона параллелен десктопной
+  сессии — Telegram это разрешает, но при определённых условиях может
+  потребовать повторного ввода кода.
+
+### Termux:Boot — автозапуск бэкенда при загрузке телефона
+
+Приложение [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot) от тех же
+авторов запускает скрипты из `~/.termux/boot/` сразу после загрузки Android.
+Один раз настроив, бэкенд будет подниматься без ручного открывания Termux.
+
+1. Поставьте Termux:Boot с F-Droid (того же источника, что и сам Termux).
+2. Откройте его один раз — это зарегистрирует приложение для старта при
+   загрузке. UI у него нет.
+3. В Termux создайте скрипт запуска:
+   ```
+   mkdir -p ~/.termux/boot
+   cat > ~/.termux/boot/start-backend <<'EOF'
+   #!/data/data/com.termux/files/usr/bin/sh
+   termux-wake-lock
+   cd ~/telegram-comments
+   exec python -m uvicorn web.app:app --host 127.0.0.1 --port 8000
+   EOF
+   chmod +x ~/.termux/boot/start-backend
+   ```
+4. Перезагрузите телефон. После загрузки Termux:Boot запустит скрипт;
+   бэкенд поднимется автоматически.
+
+Замечания:
+
+- Если Android всё равно убивает процесс (особенно на MIUI/EMUI с их
+  агрессивной экономией батареи) — добавьте Termux и Termux:Boot в список
+  «не оптимизировать» в настройках батареи.
+- Путь `~/telegram-comments` предполагает, что репозиторий склонирован в
+  home Termux; поправьте под себя.
+- Логи автозапуска скрипт не пишет. При проблеме временно замените
+  `exec python ...` на `python ... 2>&1 | tee ~/boot.log` и перезагрузитесь.
+
+### Логи и отладка
+
+**WebView-APK.** В debug-сборке включён
+`WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)` (см.
+[`MainActivity.kt`](android/app/src/main/java/com/telegramcomments/app/MainActivity.kt)),
+поэтому страницу внутри APK можно инспектировать с компьютера через Chrome
+DevTools:
+
+1. Подключите телефон по USB с включённой отладкой (см. раздел про adb выше).
+2. На компьютере откройте `chrome://inspect/#devices`.
+3. Под названием устройства появится *Telegram Comments* с кнопкой *inspect*.
+   Откроется обычный DevTools: Console, Network, Sources — весь фронтенд
+   FastAPI-сайта виден, как если бы это была вкладка Chrome.
+
+Нативные логи APK (включая колбэки `WebViewClient.onReceivedError`):
+```
+adb logcat -s WebViewGL AndroidRuntime ActivityManager
+```
+или без фильтра: `adb logcat | grep -iE 'telegramcomments|webview'`.
+
+В release-сборке `BuildConfig.DEBUG = false`, и DevTools по `chrome://inspect`
+не подключается — намеренно, чтобы не утекал фронтенд-стейт в
+распространяемой сборке.
+
+**Termux / Python.** Логи pyrolog и uvicorn идут в stdout Termux. Чтобы
+писать их в файл:
+```
+python -m uvicorn web.app:app --host 127.0.0.1 --port 8000 2>&1 | tee uvicorn.log
+```
+Также парсер пишет в `data/telegram-comments-classify.log` и
+`data/telegram-comments-translate.log` (см. корневой `.gitignore`).
+
+Проверить, активна ли `termux-wake-lock`, отдельной командой нельзя —
+индикатор виден в шторке уведомлений (постоянное уведомление Termux «Wake
+lock held»). Снять блокировку: `termux-wake-unlock`.
+
 ## Поиск пользователя по отображаемому имени
 
 `user-comments` принимает только `@username` или числовой `tg_id` — отображаемое имя
@@ -280,12 +484,11 @@ tg_id     | username  | name        | found in | channels
 
 ```
 ./scripts/run.sh collect
-./scripts/run.sh haters
 ```
 
 ## Данные
 
-`data/app.db` (режимы `collect` / `haters`):
+`data/app.db` (режим `collect`):
 
 ```
 users(tg_id PK, username)
@@ -308,7 +511,7 @@ user_messages(id PK, tg_id, username, channel, message_id, text, date,
 |---|---|---|
 | `API_ID`, `API_HASH` | — | API-креды Telegram, обязательны |
 | `DATA_DIR` | `data` | Каталог для баз данных |
-| `DB_PATH` | `<DATA_DIR>/app.db` | База для `collect` / `haters` |
+| `DB_PATH` | `<DATA_DIR>/app.db` | База для `collect` |
 | `USER_DB_PATH` | не задана | Не задана: `user-comments` называет файл по пользователю. Задана: используется ровно этот файл |
 | `CHANNELS_PATH` | `channels.json` | Файл со списком каналов (его же дописывает `discover-channels`) |
 | `LIMIT` | `1000` | Сообщений на источник для `collect`, `find-user` (история) и `discover-channels`; в `user-comments` не используется |

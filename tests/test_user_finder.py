@@ -11,6 +11,7 @@ from parser.user_finder import (
     find_users,
     format_found_users,
 )
+from parser.telegram import TelegramUser
 
 
 class FakeTGClient:
@@ -53,12 +54,12 @@ def _chat(linked_chat_id: int | None):
 
 
 def _user(tg_id: int, username=None, first="Хрюкало", last="Офф"):
-    return {
-        "tg_id": tg_id,
-        "username": username,
-        "first_name": first,
-        "last_name": last,
-    }
+    return TelegramUser(
+        tg_id=tg_id,
+        username=username,
+        first_name=first,
+        last_name=last,
+    )
 
 
 def _deps(tg_client, logger, members: dict, history: dict, calls: list | None = None):

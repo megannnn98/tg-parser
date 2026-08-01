@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Cleartext is permitted so the app works against a local-network
+        FastAPI backend (http://192.168.x.x:8000). HTTPS is recommended for
+        any deployment reachable from the public internet; configure it on
+        the FastAPI side or put the app behind a reverse proxy.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

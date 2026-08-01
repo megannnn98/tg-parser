@@ -45,9 +45,17 @@ jobs:
       packages: read
 
     steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y git
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Trust checkout directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Install deps
         run: |
@@ -70,7 +78,10 @@ jobs:
         run: |
           cz bump --yes || cz bump --yes --increment PATCH
 
-      - name: Push release commit and tag
+      - name: Push release branch and tag
         run: |
-          git push origin HEAD:main
-          git push --follow-tags
+          release_branch="release/ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          release_tag="$(git describe --tags --abbrev=0)"
+          git push origin "HEAD:${release_branch}"
+          git push origin "refs/tags/${release_tag}"
+          echo "Release commit pushed to ${release_branch} with tag ${release_tag}. Open a pull request into main to satisfy branch protection."

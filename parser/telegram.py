@@ -1,4 +1,6 @@
 import asyncio
+from dataclasses import dataclass
+from pathlib import Path
 
 from pyrogram import Client, enums
 from pyrogram.errors import AuthKeyDuplicated, FloodWait, Unauthorized
@@ -10,12 +12,55 @@ FATAL_TG_ERRORS = (Unauthorized, AuthKeyDuplicated)
 
 logger = get_logger("telegram")
 
+
+@dataclass(frozen=True)
+class CollectedMessage:
+    tg_id: int
+    username: str | None
+    message_id: int
+    date: str
+    text: str
+
+
+@dataclass(frozen=True)
+class ChannelInfo:
+    username: str
+    title: str
+    members: int | None
+
+
+@dataclass(frozen=True)
+class MentionRow:
+    forward_channel: str | None
+    text: str | None
+
+
+@dataclass(frozen=True)
+class TelegramUser:
+    tg_id: int
+    username: str | None
+    first_name: str | None
+    last_name: str | None
+
+
+@dataclass(frozen=True)
+class UserComment:
+    message_id: int
+    date: str
+    text: str
+
+
 def get_client():
+    # Pyrogram defaults workdir to Path(sys.argv[0]).parent, which is the
+    # entry point's own directory (e.g. /usr/local/bin for `uvicorn ...`),
+    # not the project directory - it must be pinned explicitly so the
+    # session file resolves the same way under any entry point.
     return Client(
         "my_session",
         api_id=API_ID,
         api_hash=API_HASH,
         sleep_threshold=60,
+        workdir=Path.cwd(),
     )
 
 
@@ -37,15 +82,15 @@ async def fetch_messages(tg_client, channel_linked_chat_id):
         if not msg.text or not msg.from_user:
             continue
 
-        yield {
-            "tg_id": msg.from_user.id,
-            "username": msg.from_user.username,
-            "message_id": msg.id,
-            "date": str(msg.date),
-            "text": msg.text,
-        }
+        yield CollectedMessage(
+            tg_id=msg.from_user.id,
+            username=msg.from_user.username,
+            message_id=msg.id,
+            date=str(msg.date),
+            text=msg.text,
+        )
 
-async def describe_channel(tg_client, username: str) -> dict | None:
+async def describe_channel(tg_client, username: str) -> ChannelInfo | None:
     try:
         chat = await tg_client.get_chat(username)
     except FATAL_TG_ERRORS:
@@ -68,28 +113,28 @@ async def describe_channel(tg_client, username: str) -> dict | None:
         logger.info(f"Skipped @{username}: no linked discussion")
         return None
 
-    return {
-        "username": username,
-        "title": chat.title,
-        "members": chat.members_count,
-    }
+    return ChannelInfo(
+        username=username,
+        title=chat.title,
+        members=chat.members_count,
+    )
 
 async def fetch_mentions(tg_client, chat_id):
     async for msg in tg_client.get_chat_history(chat_id, LIMIT):
         forward = msg.forward_from_chat
 
-        yield {
-            "forward_channel": forward.username if forward else None,
-            "text": msg.text or msg.caption,
-        }
+        yield MentionRow(
+            forward_channel=forward.username if forward else None,
+            text=msg.text or msg.caption,
+        )
 
-def _as_found_user(user) -> dict:
-    return {
-        "tg_id": user.id,
-        "username": user.username,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-    }
+def _as_found_user(user) -> TelegramUser:
+    return TelegramUser(
+        tg_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
 
 def _matches_name(user, query: str) -> bool:
     haystack = " ".join(
@@ -117,12 +162,23 @@ async def find_history_authors(tg_client, chat_id, query: str):
         seen.add(user.id)
         yield _as_found_user(user)
 
-async def resolve_user(tg_client, user_ref: int | str) -> dict:
+async def resolve_user(tg_client, user_ref: int | str) -> TelegramUser:
     try:
         user = await tg_client.get_users(user_ref)
     except FATAL_TG_ERRORS:
-        # A dead session is not an "unknown user": keep the original type.
         raise
+    except FloodWait as exc:
+        wait = exc.value
+        if wait <= 30:
+            logger.warning(
+                f"FloodWait {wait}s on resolve_user({user_ref!r}), waiting it out"
+            )
+            await asyncio.sleep(wait + 1)
+            return await resolve_user(tg_client, user_ref)
+        raise RuntimeError(
+            f"Telegram rate-limited resolve_user({user_ref!r}). "
+            f"Wait {wait} seconds ({wait / 3600:.1f} hours) before retrying."
+        ) from exc
     except Exception as exc:
         raise RuntimeError(f"Cannot resolve user {user_ref!r}: {exc}") from exc
 
@@ -141,8 +197,8 @@ async def fetch_user_messages(tg_client, chat_id, tg_id: int):
             )
             continue
 
-        yield {
-            "message_id": msg.id,
-            "date": str(msg.date),
-            "text": msg.text,
-        }
+        yield UserComment(
+            message_id=msg.id,
+            date=str(msg.date),
+            text=msg.text,
+        )

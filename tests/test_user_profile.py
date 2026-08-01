@@ -5,8 +5,10 @@ import pytest
 
 from parser.user_profile import (
     UserProfileError,
+    fetch_user_comments,
     list_user_profiles,
     load_user_profile,
+    render_user_comments_text,
 )
 
 
@@ -124,6 +126,99 @@ def test_list_user_profiles_skips_app_db_and_empty_directory(tmp_path: Path):
 
     assert [profile.db_name for profile in profiles] == ["vasya_7.db"]
     assert list_user_profiles(tmp_path / "missing") == []
+
+
+def _create_comments_db(db_path: Path, rows: list[tuple[int, str, int, str, str]]):
+    with sqlite3.connect(db_path) as db:
+        db.execute(
+            """
+            CREATE TABLE user_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tg_id INTEGER NOT NULL,
+                username TEXT,
+                channel TEXT NOT NULL,
+                message_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                date TEXT NOT NULL,
+                UNIQUE(channel, message_id)
+            )
+            """
+        )
+        db.executemany(
+            """
+            INSERT INTO user_messages
+            (tg_id, username, channel, message_id, text, date)
+            VALUES (?, 'vasya', ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def test_fetch_user_comments_orders_by_date_then_channel_then_message_id(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "vasya_7.db"
+    _create_comments_db(
+        db_path,
+        [
+            (7, "chan_b", 1, "later", "2026-08-02"),
+            (7, "chan_a", 2, "earlier second", "2026-08-01"),
+            (7, "chan_a", 1, "earlier first", "2026-08-01"),
+            (8, "chan_a", 3, "other user", "2026-08-01"),
+        ],
+    )
+
+    comments = fetch_user_comments(db_path, tg_id=7)
+
+    assert [(c.date, c.channel, c.text) for c in comments] == [
+        ("2026-08-01", "chan_a", "earlier first"),
+        ("2026-08-01", "chan_a", "earlier second"),
+        ("2026-08-02", "chan_b", "later"),
+    ]
+
+
+def test_fetch_user_comments_breaks_same_date_ties_by_channel(tmp_path: Path):
+    db_path = tmp_path / "vasya_7.db"
+    _create_comments_db(
+        db_path,
+        [
+            (7, "chan_c", 2, "chan_c later id", "2026-08-01"),
+            (7, "chan_b", 1, "chan_b earlier id", "2026-08-01"),
+            (7, "chan_a", 1, "chan_a earlier id", "2026-08-01"),
+        ],
+    )
+
+    comments = fetch_user_comments(db_path, tg_id=7)
+
+    assert [c.channel for c in comments] == ["chan_a", "chan_b", "chan_c"]
+
+
+def test_fetch_user_comments_returns_empty_list_without_user_messages_table(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "empty_7.db"
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+
+    assert fetch_user_comments(db_path, tg_id=7) == []
+
+
+def test_render_user_comments_text_joins_entries_with_blank_line(tmp_path: Path):
+    db_path = tmp_path / "vasya_7.db"
+    _create_comments_db(
+        db_path,
+        [
+            (7, "chan_a", 1, "hello", "2026-08-01"),
+            (7, "chan_b", 2, "world", "2026-08-02"),
+        ],
+    )
+    comments = fetch_user_comments(db_path, tg_id=7)
+
+    text = render_user_comments_text(comments)
+
+    assert text == (
+        "2026-08-01 | chan_a\nhello\n\n2026-08-02 | chan_b\nworld"
+    )
 
 
 def test_list_user_profiles_logs_unreadable_databases(

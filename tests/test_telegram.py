@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import fake_pyrogram
@@ -35,11 +36,12 @@ def test_get_client_uses_config_values(monkeypatch):
     captured: dict[str, object] = {}
 
     class FakeClient:
-        def __init__(self, session_name, api_id, api_hash, sleep_threshold):
+        def __init__(self, session_name, api_id, api_hash, sleep_threshold, workdir):
             captured["session_name"] = session_name
             captured["api_id"] = api_id
             captured["api_hash"] = api_hash
             captured["sleep_threshold"] = sleep_threshold
+            captured["workdir"] = workdir
 
     monkeypatch.setattr(telegram, "Client", FakeClient)
     client = telegram.get_client()
@@ -50,6 +52,7 @@ def test_get_client_uses_config_values(monkeypatch):
         "api_id": 12345,
         "api_hash": "hash123",
         "sleep_threshold": 60,
+        "workdir": Path.cwd(),
     }
 
 
@@ -131,13 +134,13 @@ def test_fetch_messages_filters_invalid_and_maps_fields(monkeypatch):
     calls, result = asyncio.run(_run())
     assert calls == [(42, 2)]
     assert result == [
-        {
-            "tg_id": 10,
-            "username": "alice",
-            "message_id": 777,
-            "date": "2025-02-15 10:00:00",
-            "text": "Hello",
-        }
+        telegram.CollectedMessage(
+            tg_id=10,
+            username="alice",
+            message_id=777,
+            date="2025-02-15 10:00:00",
+            text="Hello",
+        )
     ]
 
 
@@ -161,12 +164,12 @@ def test_resolve_user_returns_all_name_fields(monkeypatch):
 
     calls, resolved = asyncio.run(_run())
     assert calls == [555]
-    assert resolved == {
-        "tg_id": 555,
-        "username": None,
-        "first_name": "Хрюкало",
-        "last_name": "Офф",
-    }
+    assert resolved == telegram.TelegramUser(
+        tg_id=555,
+        username=None,
+        first_name="Хрюкало",
+        last_name="Офф",
+    )
 
 
 def test_resolve_user_raises_runtime_error_on_failure(monkeypatch):
@@ -248,11 +251,11 @@ def test_fetch_user_messages_filters_and_maps_fields(monkeypatch):
     calls, result = asyncio.run(_run())
     assert calls == [(42, 555, 0)]
     assert result == [
-        {
-            "message_id": 777,
-            "date": "2025-02-15 10:00:00",
-            "text": "Hello",
-        }
+        telegram.UserComment(
+            message_id=777,
+            date="2025-02-15 10:00:00",
+            text="Hello",
+        )
     ]
 
 
@@ -285,12 +288,12 @@ def test_find_chat_members_maps_fields_and_skips_memberless_entries(monkeypatch)
     calls, found = asyncio.run(_run())
     assert calls == [(42, "Хрюкало")]
     assert found == [
-        {
-            "tg_id": 555,
-            "username": "hryukalo",
-            "first_name": "Хрюкало",
-            "last_name": "Офф",
-        }
+        telegram.TelegramUser(
+            tg_id=555,
+            username="hryukalo",
+            first_name="Хрюкало",
+            last_name="Офф",
+        )
     ]
 
 
@@ -327,12 +330,12 @@ def test_find_history_authors_matches_any_name_field(monkeypatch, query: str):
     calls, found = asyncio.run(_run())
     assert calls == [(42, 2)]  # LIMIT from config
     assert found == [
-        {
-            "tg_id": 555,
-            "username": "hryukalo",
-            "first_name": "Хрюкало",
-            "last_name": "Офф",
-        }
+        telegram.TelegramUser(
+            tg_id=555,
+            username="hryukalo",
+            first_name="Хрюкало",
+            last_name="Офф",
+        )
     ]
 
 
@@ -353,12 +356,12 @@ def test_find_history_authors_ignores_missing_name_parts(monkeypatch):
         ]
 
     assert asyncio.run(_run()) == [
-        {
-            "tg_id": 1,
-            "username": None,
-            "first_name": "Хрюкало",
-            "last_name": None,
-        }
+        telegram.TelegramUser(
+            tg_id=1,
+            username=None,
+            first_name="Хрюкало",
+            last_name=None,
+        )
     ]
 
 
@@ -398,9 +401,9 @@ def test_fetch_mentions_yields_forwards_and_text(monkeypatch):
     calls, rows = asyncio.run(_run())
     assert calls == [(42, 2)]  # LIMIT from config
     assert rows == [
-        {"forward_channel": "lenin_crew", "text": "Смотрите"},
-        {"forward_channel": None, "text": "ссылка t.me/rud01vb"},
-        {"forward_channel": None, "text": "Аноним"},
+        telegram.MentionRow(forward_channel="lenin_crew", text="Смотрите"),
+        telegram.MentionRow(forward_channel=None, text="ссылка t.me/rud01vb"),
+        telegram.MentionRow(forward_channel=None, text="Аноним"),
     ]
 
 
@@ -431,11 +434,11 @@ def test_describe_channel_accepts_channel_with_discussion(monkeypatch):
 
     calls, info = asyncio.run(_run())
     assert calls == ["lenin_crew"]
-    assert info == {
-        "username": "lenin_crew",
-        "title": "Ленин Крю",
-        "members": 1234,
-    }
+    assert info == telegram.ChannelInfo(
+        username="lenin_crew",
+        title="Ленин Крю",
+        members=1234,
+    )
 
 
 @pytest.mark.parametrize(
