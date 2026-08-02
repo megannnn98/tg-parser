@@ -278,17 +278,27 @@
           currentChannelLabel.textContent = "Читаю канал: " + current.channel;
           currentChannelBar.className = "bar-fill bar-fill--indeterminate";
         } else {
-          currentChannelLabel.textContent = job.state === "running" ? "" : "Готово";
+          // Only "done" means the top bar is actually finished - "error" must
+          // not show "Готово"/100%, that directly contradicts the error text
+          // shown right below it.
+          currentChannelLabel.textContent = job.state === "done" ? "Готово" : "";
           currentChannelBar.className = "bar-fill";
-          currentChannelBar.style.width = job.state === "running" ? "0%" : "100%";
+          currentChannelBar.style.width = job.state === "done" ? "100%" : "0%";
         }
 
-        const total = job.total_channels || job.channels.length || 1;
+        const total = job.total_channels || job.channels.length;
         const completed = job.channels.filter(function (ch) {
           return ch.status !== "started";
         }).length;
-        overallLabel.textContent = completed + " из " + total + " каналов";
-        overallBar.style.width = Math.round((completed / total) * 100) + "%";
+        if (total > 0) {
+          overallLabel.textContent = completed + " из " + total + " каналов";
+          overallBar.style.width = Math.round((completed / total) * 100) + "%";
+        } else {
+          // total_channels was 0 at job start (empty channel list) - there is
+          // no meaningful "N of M" to show.
+          overallLabel.textContent = completed + " каналов";
+          overallBar.style.width = "0%";
+        }
       }
 
       function renderFailedChannels(channels) {
