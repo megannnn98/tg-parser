@@ -8,7 +8,8 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from config import CHANNELS
+from config import CHANNELS, CHANNELS_PATH
+from parser.channels_store import InvalidChannelError, parse_channels_text, save_channels
 from parser.user_profile import UserProfileError, list_user_profiles, load_user_profile
 from parser.utils import parse_user_ref
 from web.jobs import JobAlreadyRunningError, JobRegistry
@@ -21,14 +22,20 @@ class CollectRequest(BaseModel):
     username: str
 
 
+class ChannelsRequest(BaseModel):
+    channels_text: str
+
+
 def create_app(
     data_dir: Path | None = None,
     channels: list[str] | None = None,
+    channels_path: Path | None = None,
     job_registry: JobRegistry | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Telegram user profiles")
     app.state.data_dir = data_dir or Path(os.getenv("DATA_DIR", "data"))
     app.state.channels = channels if channels is not None else CHANNELS
+    app.state.channels_path = channels_path or CHANNELS_PATH
     app.state.job_registry = job_registry if job_registry is not None else JobRegistry()
 
     @app.get("/", response_class=HTMLResponse)
@@ -40,8 +47,20 @@ def create_app(
             {
                 "profiles": profiles,
                 "data_dir": app.state.data_dir,
+                "channels": app.state.channels,
             },
         )
+
+    @app.post("/channels")
+    def save_channels_list(payload: ChannelsRequest):
+        try:
+            channels = parse_channels_text(payload.channels_text)
+        except InvalidChannelError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        save_channels(app.state.channels_path, channels)
+        app.state.channels = channels
+        return {"channels": channels}
 
     @app.post("/collect", status_code=202)
     async def start_collect(payload: CollectRequest):

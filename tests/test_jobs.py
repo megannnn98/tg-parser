@@ -39,6 +39,25 @@ def test_start_runs_job_to_completion_and_reports_result(tmp_path: Path):
     ]
 
 
+def test_start_records_total_channels_for_progress_reporting(tmp_path: Path):
+    tasks: list = []
+
+    async def fake_collect(data_dir, cfg, user_ref, deps):
+        return tmp_path / "vasya_555.db", 0
+
+    registry = JobRegistry(collect_fn=fake_collect, task_factory=_task_factory(tasks))
+
+    async def _run():
+        job = registry.start(tmp_path, ["chan_a", "chan_b", "chan_c"], "@vasya")
+        await tasks[0]
+        return job
+
+    job = asyncio.run(_run())
+
+    assert job.total_channels == 3
+    assert job.snapshot()["total_channels"] == 3
+
+
 def test_start_reports_user_resolved(tmp_path: Path):
     tasks: list = []
 

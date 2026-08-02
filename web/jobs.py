@@ -28,6 +28,7 @@ class JobAlreadyRunningError(RuntimeError):
 class CollectJob:
     job_id: str
     user_ref: int | str
+    total_channels: int = 0
     state: str = "running"  # "running" | "done" | "error"
     resolved: dict | None = None
     channels: dict[str, ChannelProgress] = field(default_factory=dict)
@@ -45,6 +46,7 @@ class CollectJob:
         return {
             "job_id": self.job_id,
             "user_ref": self.user_ref,
+            "total_channels": self.total_channels,
             "state": self.state,
             "resolved": self.resolved,
             "channels": [
@@ -90,7 +92,11 @@ class JobRegistry:
                 "Сбор комментариев уже выполняется, подождите его завершения"
             )
 
-        job = CollectJob(job_id=uuid.uuid4().hex, user_ref=user_ref)
+        job = CollectJob(
+            job_id=uuid.uuid4().hex,
+            user_ref=user_ref,
+            total_channels=len(channels),
+        )
         self._jobs[job.job_id] = job
         self._running_job_id = job.job_id
 

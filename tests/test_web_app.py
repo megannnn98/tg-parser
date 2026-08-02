@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -116,3 +117,46 @@ def test_collect_status_returns_404_for_unknown_job(tmp_path: Path):
         resp = client.get("/collect/does-not-exist/status")
 
     assert resp.status_code == 404
+
+
+def test_index_renders_current_channels(tmp_path: Path):
+    app = create_app(data_dir=tmp_path, channels=["chan_a", "chan_b"])
+
+    with TestClient(app) as client:
+        resp = client.get("/")
+
+    assert resp.status_code == 200
+    assert "chan_a" in resp.text
+    assert "chan_b" in resp.text
+
+
+def test_save_channels_list_persists_and_updates_app_state(tmp_path: Path):
+    channels_path = tmp_path / "channels.json"
+    channels_path.write_text(json.dumps(["old_channel"]))
+    app = create_app(
+        data_dir=tmp_path, channels=["old_channel"], channels_path=channels_path
+    )
+
+    with TestClient(app) as client:
+        resp = client.post("/channels", json={"channels_text": "chan_a\n@chan_b\n"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"channels": ["chan_a", "chan_b"]}
+    assert json.loads(channels_path.read_text()) == ["chan_a", "chan_b"]
+    assert app.state.channels == ["chan_a", "chan_b"]
+
+
+def test_save_channels_list_rejects_invalid_line(tmp_path: Path):
+    channels_path = tmp_path / "channels.json"
+    channels_path.write_text(json.dumps(["old_channel"]))
+    app = create_app(
+        data_dir=tmp_path, channels=["old_channel"], channels_path=channels_path
+    )
+
+    with TestClient(app) as client:
+        resp = client.post("/channels", json={"channels_text": "chan a"})
+
+    assert resp.status_code == 400
+    # Nothing is written and app.state.channels is untouched on validation failure.
+    assert json.loads(channels_path.read_text()) == ["old_channel"]
+    assert app.state.channels == ["old_channel"]
