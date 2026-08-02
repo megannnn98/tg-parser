@@ -6,6 +6,7 @@ import pytest
 from fake_pyrogram import FakeUnauthorized
 
 from parser.user_collector import (
+    ChannelProgress,
     UserCollectorConfig,
     UserCollectorDeps,
     collect_user_comments,
@@ -70,7 +71,14 @@ def _comment(message_id: int, text: str, date: str) -> UserComment:
     return UserComment(message_id=message_id, text=text, date=date)
 
 
-def _deps(tg_client, logger, messages: dict[int, list[UserComment]], resolved=None):
+def _deps(
+    tg_client,
+    logger,
+    messages: dict[int, list[UserComment]],
+    resolved=None,
+    on_user_resolved=None,
+    on_channel_progress=None,
+):
     resolved = _resolved() if resolved is None else resolved
 
     async def resolve_user_fn(_tg_client, user_ref):
@@ -83,11 +91,18 @@ def _deps(tg_client, logger, messages: dict[int, list[UserComment]], resolved=No
         for msg in messages.get(chat_id, []):
             yield msg
 
+    kwargs = {}
+    if on_user_resolved is not None:
+        kwargs["on_user_resolved"] = on_user_resolved
+    if on_channel_progress is not None:
+        kwargs["on_channel_progress"] = on_channel_progress
+
     return UserCollectorDeps(
         tg_client_factory=lambda: tg_client,
         fetch_user_messages_fn=fetch_user_messages_fn,
         resolve_user_fn=resolve_user_fn,
         logger_factory=lambda _name: logger,
+        **kwargs,
     )
 
 
@@ -378,6 +393,81 @@ def test_collect_user_comments_reports_saved_rows_before_fatal_abort(tmp_path: P
     rows = asyncio.run(_read_rows(tmp_path / "vasya_555.db"))
     assert len(rows) == 2
     assert any("2" in msg for msg in logger.errors)
+
+
+def test_collect_user_comments_reports_progress_via_callbacks(tmp_path: Path):
+    tg_client = FakeTGClient(
+        {
+            "chan_a": _chat(1001),
+            "chan_no_discussion": _chat(None),
+        }
+    )
+    logger = FakeLogger()
+    messages = {1001: [_comment(10, "Первый", "2025-02-01")]}
+    resolved_users = []
+    channel_events = []
+
+    async def _run():
+        await collect_user_comments(
+            tmp_path,
+            UserCollectorConfig(channels=["chan_a", "chan_no_discussion"]),
+            "@vasya",
+            _deps(
+                tg_client,
+                logger,
+                messages,
+                on_user_resolved=resolved_users.append,
+                on_channel_progress=channel_events.append,
+            ),
+        )
+
+    asyncio.run(_run())
+
+    assert resolved_users == [_resolved()]
+    assert channel_events == [
+        ChannelProgress(channel="chan_a", status="started"),
+        ChannelProgress(channel="chan_a", status="done", saved=1),
+        ChannelProgress(channel="chan_no_discussion", status="started"),
+        ChannelProgress(channel="chan_no_discussion", status="done", saved=0),
+    ]
+
+
+def test_collect_user_comments_reports_failed_channel_progress(tmp_path: Path):
+    class BrokenChatClient(FakeTGClient):
+        async def get_chat(self, channel_username: str):
+            if channel_username == "chan_broken":
+                raise RuntimeError("CHANNEL_INVALID")
+            return await super().get_chat(channel_username)
+
+    tg_client = BrokenChatClient({"chan_a": _chat(1001)})
+    logger = FakeLogger()
+    messages = {1001: [_comment(10, "Первый", "2025-02-01")]}
+    channel_events = []
+
+    async def _run():
+        await collect_user_comments(
+            tmp_path,
+            UserCollectorConfig(channels=["chan_broken", "chan_a"]),
+            "@vasya",
+            _deps(
+                tg_client,
+                logger,
+                messages,
+                on_channel_progress=channel_events.append,
+            ),
+        )
+
+    asyncio.run(_run())
+
+    assert channel_events[0] == ChannelProgress(channel="chan_broken", status="started")
+    failed = channel_events[1]
+    assert failed.channel == "chan_broken"
+    assert failed.status == "failed"
+    assert "CHANNEL_INVALID" in failed.error
+    assert channel_events[2:] == [
+        ChannelProgress(channel="chan_a", status="started"),
+        ChannelProgress(channel="chan_a", status="done", saved=1),
+    ]
 
 
 def test_collect_user_comments_rejects_empty_channels(tmp_path: Path):

@@ -10,6 +10,7 @@ from parser.logger import get_logger
 from parser.measure_time import measure_time
 from parser.storage import get_db
 from parser.telegram import (
+    TelegramUser,
     fetch_user_messages,
     get_client,
     resolve_user,
@@ -24,11 +25,21 @@ class UserCollectorConfig:
 
 
 @dataclass(frozen=True)
+class ChannelProgress:
+    channel: str
+    status: str  # "started" | "done" | "failed"
+    saved: int = 0
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class UserCollectorDeps:
     tg_client_factory: Callable[[], object] = get_client
     fetch_user_messages_fn: Callable = fetch_user_messages
     resolve_user_fn: Callable = resolve_user
     logger_factory: Callable[[str], object] = get_logger
+    on_user_resolved: Callable[[TelegramUser], None] = lambda _user: None
+    on_channel_progress: Callable[[ChannelProgress], None] = lambda _progress: None
 
 
 async def collect_user_channel(
@@ -101,6 +112,7 @@ async def collect_user_comments(
             f"Resolved {user_ref} -> tg_id={tg_id}, username={username}, "
             f"name={join_name(resolved.first_name, resolved.last_name)!r}"
         )
+        deps.on_user_resolved(resolved)
 
         db_path = db_path_override or data_dir / user_db_filename(
             tg_id,
@@ -114,14 +126,32 @@ async def collect_user_comments(
 
             async def one(channel_username: str) -> None:
                 nonlocal saved
-                saved += await collect_user_channel(
-                    db=db,
-                    tg_client=tg_client,
-                    channel_username=channel_username,
-                    tg_id=tg_id,
-                    username=username,
-                    fetch_user_messages_fn=deps.fetch_user_messages_fn,
-                    logger=logger,
+                deps.on_channel_progress(
+                    ChannelProgress(channel=channel_username, status="started")
+                )
+                try:
+                    added = await collect_user_channel(
+                        db=db,
+                        tg_client=tg_client,
+                        channel_username=channel_username,
+                        tg_id=tg_id,
+                        username=username,
+                        fetch_user_messages_fn=deps.fetch_user_messages_fn,
+                        logger=logger,
+                    )
+                except Exception as exc:
+                    deps.on_channel_progress(
+                        ChannelProgress(
+                            channel=channel_username, status="failed", error=str(exc)
+                        )
+                    )
+                    raise
+
+                saved += added
+                deps.on_channel_progress(
+                    ChannelProgress(
+                        channel=channel_username, status="done", saved=added
+                    )
                 )
 
             await sweep_channels(

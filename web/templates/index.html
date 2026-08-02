@@ -72,12 +72,96 @@
       background: var(--surface);
       color: var(--muted);
     }
+    .collect {
+      margin: 0 0 32px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+    .collect h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .collect-form {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .collect-form input {
+      flex: 1 1 240px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 15px;
+    }
+    .collect-form button {
+      padding: 10px 18px;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 15px;
+      cursor: pointer;
+    }
+    .collect-form button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .progress {
+      margin-top: 16px;
+    }
+    .progress-status {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .progress-channels {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 14px;
+    }
+    .progress-channel {
+      padding: 4px 0;
+      color: var(--muted);
+    }
+    .progress-channel--done {
+      color: #16a34a;
+    }
+    .progress-channel--failed {
+      color: #dc2626;
+    }
+    .collect-error {
+      margin-top: 12px;
+      color: #dc2626;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
   <main>
     <h1>Пользователи</h1>
     <p class="meta">Базы комментариев из {{ data_dir }}</p>
+
+    <section class="collect">
+      <h2>Скачать комментарии по юзернейму</h2>
+      <form id="collect-form" class="collect-form">
+        <input
+          type="text"
+          id="collect-username"
+          placeholder="@username или tg_id"
+          autocomplete="off"
+          required
+        >
+        <button type="submit">Скачать</button>
+      </form>
+      <div id="collect-progress" class="progress" hidden>
+        <p id="collect-status" class="progress-status"></p>
+        <ul id="collect-channels" class="progress-channels"></ul>
+      </div>
+      <p id="collect-error" class="collect-error" hidden></p>
+    </section>
 
     {% if profiles %}
       <div class="grid">
@@ -94,5 +178,118 @@
       <div class="empty">В каталоге нет скачанных user DB с таблицей user_messages.</div>
     {% endif %}
   </main>
+
+  <script>
+    (function () {
+      const form = document.getElementById("collect-form");
+      const input = document.getElementById("collect-username");
+      const button = form.querySelector("button");
+      const progress = document.getElementById("collect-progress");
+      const statusEl = document.getElementById("collect-status");
+      const channelsEl = document.getElementById("collect-channels");
+      const errorEl = document.getElementById("collect-error");
+
+      const STATUS_LABELS = { started: "качаю…", done: "готово", failed: "ошибка" };
+
+      function renderChannels(channels) {
+        channelsEl.innerHTML = "";
+        channels.forEach(function (ch) {
+          const li = document.createElement("li");
+          li.className = "progress-channel progress-channel--" + ch.status;
+          let text = ch.channel + ": " + (STATUS_LABELS[ch.status] || ch.status);
+          if (ch.status === "done") {
+            text += " (+" + ch.saved + ")";
+          }
+          if (ch.status === "failed" && ch.error) {
+            text += " — " + ch.error;
+          }
+          li.textContent = text;
+          channelsEl.appendChild(li);
+        });
+      }
+
+      function describeUser(resolved) {
+        if (!resolved) {
+          return "Резолвим пользователя…";
+        }
+        const name = resolved.username ? "@" + resolved.username : (resolved.display_name || resolved.tg_id);
+        return "Пользователь: " + name;
+      }
+
+      function resetForm() {
+        button.disabled = false;
+      }
+
+      const MAX_POLL_FAILURES = 10;
+
+      function poll(jobId, failures) {
+        failures = failures || 0;
+        fetch("/collect/" + jobId + "/status")
+          .then(function (resp) {
+            if (!resp.ok) {
+              throw new Error("status " + resp.status);
+            }
+            return resp.json();
+          })
+          .then(function (job) {
+            statusEl.textContent = describeUser(job.resolved);
+            renderChannels(job.channels);
+
+            if (job.state === "running") {
+              setTimeout(function () { poll(jobId, 0); }, 1000);
+              return;
+            }
+
+            if (job.state === "done") {
+              statusEl.textContent = "Готово: сохранено " + job.saved_total + " новых сообщений";
+              window.location.href = "/users/" + job.db_name;
+              return;
+            }
+
+            resetForm();
+            errorEl.hidden = false;
+            errorEl.textContent = "Ошибка: " + job.error;
+          })
+          .catch(function () {
+            if (failures + 1 >= MAX_POLL_FAILURES) {
+              resetForm();
+              errorEl.hidden = false;
+              errorEl.textContent = "Не удалось получить статус сбора, попробуйте ещё раз";
+              return;
+            }
+            setTimeout(function () { poll(jobId, failures + 1); }, 1000);
+          });
+      }
+
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        errorEl.hidden = true;
+        progress.hidden = false;
+        channelsEl.innerHTML = "";
+        statusEl.textContent = "Запуск…";
+        button.disabled = true;
+
+        fetch("/collect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: input.value }),
+        })
+          .then(function (resp) {
+            if (!resp.ok) {
+              return resp.json().then(function (body) {
+                throw new Error(body.detail || "Не удалось запустить сбор");
+              });
+            }
+            return resp.json();
+          })
+          .then(function (data) { poll(data.job_id); })
+          .catch(function (err) {
+            resetForm();
+            errorEl.hidden = false;
+            errorEl.textContent = err.message;
+          });
+      });
+    })();
+  </script>
 </body>
 </html>
