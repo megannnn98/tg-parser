@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 
 from pyrogram import Client, enums
 from pyrogram.errors import AuthKeyDuplicated, FloodWait, Unauthorized
@@ -50,11 +51,16 @@ class UserComment:
 
 
 def get_client():
+    # Pyrogram defaults workdir to Path(sys.argv[0]).parent, which is the
+    # entry point's own directory (e.g. /usr/local/bin for `uvicorn ...`),
+    # not the project directory - it must be pinned explicitly so the
+    # session file resolves the same way under any entry point.
     return Client(
         "my_session",
         api_id=API_ID,
         api_hash=API_HASH,
         sleep_threshold=60,
+        workdir=Path.cwd(),
     )
 
 

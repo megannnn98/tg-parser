@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from parser.logger import get_logger
 from parser.telegram import TelegramUser
 from parser.user_collector import (
     ChannelProgress,
@@ -15,6 +16,8 @@ from parser.user_collector import (
     collect_user_comments,
 )
 from parser.utils import join_name
+
+_logger = get_logger("jobs")
 
 
 class JobAlreadyRunningError(RuntimeError):
@@ -33,6 +36,12 @@ class CollectJob:
     error: str | None = None
 
     def snapshot(self) -> dict:
+        # GET /collect/{id}/status is a sync route, so FastAPI runs it in a
+        # real worker thread while _run() mutates self.channels from the
+        # event-loop thread. list(self.channels) snapshots the keys as one
+        # atomic C call; looping a live dict view here would risk "dictionary
+        # changed size during iteration" when a new channel starts mid-read.
+        keys = list(self.channels)
         return {
             "job_id": self.job_id,
             "user_ref": self.user_ref,
@@ -45,7 +54,8 @@ class CollectJob:
                     "saved": progress.saved,
                     "error": progress.error,
                 }
-                for progress in self.channels.values()
+                for key in keys
+                if (progress := self.channels.get(key)) is not None
             ],
             "saved_total": self.saved_total,
             "db_name": self.db_name,
@@ -119,7 +129,12 @@ class JobRegistry:
             job.saved_total = saved
             job.db_name = db_path.name
             job.state = "done"
+        except asyncio.CancelledError:
+            job.error = "Сбор был прерван"
+            job.state = "error"
+            raise
         except Exception as exc:
+            _logger.exception(f"Job {job.job_id} ({user_ref!r}) failed")
             job.error = str(exc)
             job.state = "error"
         finally:

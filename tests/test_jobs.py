@@ -113,3 +113,92 @@ def test_get_returns_none_for_unknown_job(tmp_path: Path):
     registry = JobRegistry(collect_fn=None, task_factory=lambda _coro: None)
 
     assert registry.get("does-not-exist") is None
+
+
+class _MidIterationMutatingDict(dict):
+    """Deterministically simulates another thread inserting a new channel
+    while something iterates this dict's values() - the exact race
+    GET /collect/{id}/status (sync route, runs in a worker thread) can hit
+    against on_channel_progress (runs on the event-loop thread)."""
+
+    def values(self):
+        it = iter(dict.values(self))
+        first = next(it, None)
+        if first is not None:
+            yield first
+        self["injected_mid_iteration"] = ChannelProgress(
+            channel="injected_mid_iteration", status="started"
+        )
+        yield from it
+
+
+def test_snapshot_survives_channel_added_while_reading(tmp_path: Path):
+    job = CollectJob(job_id="x", user_ref="u")
+    job.channels = _MidIterationMutatingDict(
+        chan_a=ChannelProgress(channel="chan_a", status="started"),
+        chan_b=ChannelProgress(channel="chan_b", status="started"),
+    )
+
+    # Must not raise "dictionary changed size during iteration". snapshot()
+    # reads only the keys present at call time - the channel the "other
+    # thread" injects mid-call is picked up by the *next* snapshot() instead.
+    result = job.snapshot()
+
+    assert [c["channel"] for c in result["channels"]] == ["chan_a", "chan_b"]
+
+
+def test_start_marks_job_as_error_on_cancellation(tmp_path: Path):
+    tasks: list = []
+    started = asyncio.Event()
+
+    async def blocking_collect(data_dir, cfg, user_ref, deps):
+        started.set()
+        await asyncio.sleep(10)
+        return tmp_path / "a.db", 0
+
+    registry = JobRegistry(
+        collect_fn=blocking_collect, task_factory=_task_factory(tasks)
+    )
+
+    async def _run():
+        job = registry.start(tmp_path, ["chan_a"], "@vasya")
+        await started.wait()
+        tasks[0].cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await tasks[0]
+        return job
+
+    job = asyncio.run(_run())
+
+    assert job.state == "error"
+    assert job.error == "Сбор был прерван"
+
+
+def test_start_reports_mixed_channel_outcomes(tmp_path: Path):
+    tasks: list = []
+
+    async def fake_collect(data_dir, cfg, user_ref, deps):
+        deps.on_channel_progress(ChannelProgress(channel="chan_a", status="started"))
+        deps.on_channel_progress(
+            ChannelProgress(channel="chan_a", status="done", saved=5)
+        )
+        deps.on_channel_progress(ChannelProgress(channel="chan_b", status="started"))
+        deps.on_channel_progress(
+            ChannelProgress(channel="chan_b", status="failed", error="boom")
+        )
+        return tmp_path / "vasya_555.db", 5
+
+    registry = JobRegistry(collect_fn=fake_collect, task_factory=_task_factory(tasks))
+
+    async def _run():
+        job = registry.start(tmp_path, ["chan_a", "chan_b"], "@vasya")
+        await tasks[0]
+        return job
+
+    job = asyncio.run(_run())
+
+    assert job.state == "done"
+    assert job.snapshot()["channels"] == [
+        {"channel": "chan_a", "status": "done", "saved": 5, "error": None},
+        {"channel": "chan_b", "status": "failed", "saved": 0, "error": "boom"},
+    ]

@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import fake_pyrogram
@@ -35,11 +36,12 @@ def test_get_client_uses_config_values(monkeypatch):
     captured: dict[str, object] = {}
 
     class FakeClient:
-        def __init__(self, session_name, api_id, api_hash, sleep_threshold):
+        def __init__(self, session_name, api_id, api_hash, sleep_threshold, workdir):
             captured["session_name"] = session_name
             captured["api_id"] = api_id
             captured["api_hash"] = api_hash
             captured["sleep_threshold"] = sleep_threshold
+            captured["workdir"] = workdir
 
     monkeypatch.setattr(telegram, "Client", FakeClient)
     client = telegram.get_client()
@@ -50,6 +52,7 @@ def test_get_client_uses_config_values(monkeypatch):
         "api_id": 12345,
         "api_hash": "hash123",
         "sleep_threshold": 60,
+        "workdir": Path.cwd(),
     }
 
 
