@@ -81,6 +81,7 @@ jobs:
       - name: Push release branch and tag
         run: |
           release_branch="release/ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          release_tag="$(git describe --tags --abbrev=0)"
           git push origin "HEAD:${release_branch}"
-          git push --follow-tags
-          echo "Release commit pushed to ${release_branch}. Open a pull request into main to satisfy branch protection."
+          git push origin "refs/tags/${release_tag}"
+          echo "Release commit pushed to ${release_branch} with tag ${release_tag}. Open a pull request into main to satisfy branch protection."
