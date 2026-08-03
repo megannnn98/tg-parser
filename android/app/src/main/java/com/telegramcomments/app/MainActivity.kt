@@ -14,6 +14,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import com.telegramcomments.app.BuildConfig
 import com.telegramcomments.app.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
@@ -88,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureWebView() {
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
         with(binding.webView.settings) {
             javaScriptEnabled = true
             domStorageEnabled = true

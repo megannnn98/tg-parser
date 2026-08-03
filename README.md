@@ -228,6 +228,27 @@ sqlite3 data/mega_palez_<tg_id>.db \
    `platforms;android-35` и `build-tools;35.0.x`. При установке на телефон
    разрешите «установку из неизвестных источников».
 
+### Установка APK через adb (альтернатива sideload)
+
+Если на компьютере есть Android SDK Platform Tools, быстрее ставить APK через
+`adb`, а не через файл-менеджер с разрешением «установка из неизвестных
+источников».
+
+1. Включите на телефоне отладку по USB: *Настройки → О телефоне* → тапнуть
+   «Номер сборки» 7 раз, затем *Настройки → Система → Для разработчиков →
+   Отладка по USB*.
+2. Подключите телефон кабелем, разрешите отладку в появившемся диалоге.
+3. На компьютере:
+   ```
+   adb install android/app/build/outputs/apk/debug/app-debug.apk
+   ```
+   После пересборки — `adb install -r ...` (заменяет установленную копию,
+   сохраняя данные приложения, включая сохранённый URL).
+4. Логи APK и WebView — через `adb logcat` (см. раздел «Логи и отладка»).
+
+`adb` входит в `android-sdk/platform-tools/`; отдельная загрузка — на
+[developer.android.com/studio/releases/platform-tools](https://developer.android.com/studio/releases/platform-tools).
+
 ### Первый запуск
 
 1. Откройте приложение «Telegram Comments». При первом запуске появится экран
@@ -306,6 +327,75 @@ Python-код (парсер, FastAPI, pyrogram) запускается в нём
 - Повторный вход в ту же Telegram-аккаунт с телефона параллелен десктопной
   сессии — Telegram это разрешает, но при определённых условиях может
   потребовать повторного ввода кода.
+
+### Termux:Boot — автозапуск бэкенда при загрузке телефона
+
+Приложение [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot) от тех же
+авторов запускает скрипты из `~/.termux/boot/` сразу после загрузки Android.
+Один раз настроив, бэкенд будет подниматься без ручного открывания Termux.
+
+1. Поставьте Termux:Boot с F-Droid (того же источника, что и сам Termux).
+2. Откройте его один раз — это зарегистрирует приложение для старта при
+   загрузке. UI у него нет.
+3. В Termux создайте скрипт запуска:
+   ```
+   mkdir -p ~/.termux/boot
+   cat > ~/.termux/boot/start-backend <<'EOF'
+   #!/data/data/com.termux/files/usr/bin/sh
+   termux-wake-lock
+   cd ~/telegram-comments
+   exec python -m uvicorn web.app:app --host 127.0.0.1 --port 8000
+   EOF
+   chmod +x ~/.termux/boot/start-backend
+   ```
+4. Перезагрузите телефон. После загрузки Termux:Boot запустит скрипт;
+   бэкенд поднимется автоматически.
+
+Замечания:
+
+- Если Android всё равно убивает процесс (особенно на MIUI/EMUI с их
+  агрессивной экономией батареи) — добавьте Termux и Termux:Boot в список
+  «не оптимизировать» в настройках батареи.
+- Путь `~/telegram-comments` предполагает, что репозиторий склонирован в
+  home Termux; поправьте под себя.
+- Логи автозапуска скрипт не пишет. При проблеме временно замените
+  `exec python ...` на `python ... 2>&1 | tee ~/boot.log` и перезагрузитесь.
+
+### Логи и отладка
+
+**WebView-APK.** В debug-сборке включён
+`WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)` (см.
+[`MainActivity.kt`](android/app/src/main/java/com/telegramcomments/app/MainActivity.kt)),
+поэтому страницу внутри APK можно инспектировать с компьютера через Chrome
+DevTools:
+
+1. Подключите телефон по USB с включённой отладкой (см. раздел про adb выше).
+2. На компьютере откройте `chrome://inspect/#devices`.
+3. Под названием устройства появится *Telegram Comments* с кнопкой *inspect*.
+   Откроется обычный DevTools: Console, Network, Sources — весь фронтенд
+   FastAPI-сайта виден, как если бы это была вкладка Chrome.
+
+Нативные логи APK (включая колбэки `WebViewClient.onReceivedError`):
+```
+adb logcat -s WebViewGL AndroidRuntime ActivityManager
+```
+или без фильтра: `adb logcat | grep -iE 'telegramcomments|webview'`.
+
+В release-сборке `BuildConfig.DEBUG = false`, и DevTools по `chrome://inspect`
+не подключается — намеренно, чтобы не утекал фронтенд-стейт в
+распространяемой сборке.
+
+**Termux / Python.** Логи pyrolog и uvicorn идут в stdout Termux. Чтобы
+писать их в файл:
+```
+python -m uvicorn web.app:app --host 127.0.0.1 --port 8000 2>&1 | tee uvicorn.log
+```
+Также парсер пишет в `data/telegram-comments-classify.log` и
+`data/telegram-comments-translate.log` (см. корневой `.gitignore`).
+
+Проверить, активна ли `termux-wake-lock`, отдельной командой нельзя —
+индикатор виден в шторке уведомлений (постоянное уведомление Termux «Wake
+lock held»). Снять блокировку: `termux-wake-unlock`.
 
 ## Поиск пользователя по отображаемому имени
 
