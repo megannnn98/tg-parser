@@ -1,0 +1,12 @@
+# Keep default Android project artifacts. The wrapper jar already committed
+# (gradle/wrapper/gradle-wrapper.jar) is required by ./gradlew and must not be
+# ignored.
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/

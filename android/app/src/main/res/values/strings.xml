@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Telegram Comments</string>
+    <string name="settings_title">Настройки</string>
+
+    <string name="settings_url_hint">URL бэкенда</string>
+    <string name="settings_url_example">например: http://192.168.1.5:8000</string>
+    <string name="settings_save_and_open">Сохранить и открыть</string>
+
+    <string name="menu_reload">Обновить</string>
+    <string name="menu_settings">Настройки</string>
+
+    <string name="empty_state_title">Бэкенд не настроен</string>
+    <string name="empty_state_body">Введите адрес FastAPI-сервера telegram-comments в настройках.</string>
+    <string name="empty_state_button">Открыть настройки</string>
+
+    <string name="err_empty_url">Введите URL бэкенда</string>
+    <string name="err_invalid_url">Неверный URL: %1$s</string>
+    <string name="err_load_failed">Не удалось загрузить %1$s</string>
+</resources>
