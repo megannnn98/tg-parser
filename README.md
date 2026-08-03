@@ -7,7 +7,6 @@
 | Режим | Что делает | Куда пишет |
 |---|---|---|
 | `collect` | Проходит историю обсуждений всех каналов из `channels.json` | `DB_PATH` (`data/app.db`) |
-| `haters` | Печатает статистику по хейт-словам по уже собранным данным | читает `DB_PATH` |
 | `user-comments <@username\|tg_id>` | Проходит все каналы, но забирает комментарии только одного пользователя | отдельный файл на пользователя (см. ниже) |
 | `find-user <строка>` | Ищет `tg_id` и `@username` по части имени или ника | только печатает найденное |
 | `discover-channels` | Ищет новые каналы по упоминаниям и репостам в текущем списке | дописывает `channels.json` |
@@ -340,12 +339,11 @@ tg_id     | username  | name        | found in | channels
 
 ```
 ./scripts/run.sh collect
-./scripts/run.sh haters
 ```
 
 ## Данные
 
-`data/app.db` (режимы `collect` / `haters`):
+`data/app.db` (режим `collect`):
 
 ```
 users(tg_id PK, username)
@@ -368,7 +366,7 @@ user_messages(id PK, tg_id, username, channel, message_id, text, date,
 |---|---|---|
 | `API_ID`, `API_HASH` | — | API-креды Telegram, обязательны |
 | `DATA_DIR` | `data` | Каталог для баз данных |
-| `DB_PATH` | `<DATA_DIR>/app.db` | База для `collect` / `haters` |
+| `DB_PATH` | `<DATA_DIR>/app.db` | База для `collect` |
 | `USER_DB_PATH` | не задана | Не задана: `user-comments` называет файл по пользователю. Задана: используется ровно этот файл |
 | `CHANNELS_PATH` | `channels.json` | Файл со списком каналов (его же дописывает `discover-channels`) |
 | `LIMIT` | `1000` | Сообщений на источник для `collect`, `find-user` (история) и `discover-channels`; в `user-comments` не используется |
