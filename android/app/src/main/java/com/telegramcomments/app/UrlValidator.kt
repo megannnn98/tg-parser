@@ -21,6 +21,7 @@ object UrlValidator {
         }
 
         val scheme = uri.scheme?.lowercase()
+            ?: return ValidationResult.Invalid("не удалось разобрать URL")
         if (scheme != "http" && scheme != "https") {
             return ValidationResult.Invalid("поддерживаются только http и https")
         }
@@ -40,7 +41,7 @@ object UrlValidator {
             }
             val path = uri.path.orEmpty()
             val trimmed = path.trimEnd('/')
-            if (!trimmed.isNullOrEmpty()) {
+            if (trimmed.isNotEmpty()) {
                 append(trimmed)
             }
         }

@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        (binding.webView.parent as? android.view.ViewGroup)?.removeView(binding.webView)
         binding.webView.destroy()
         super.onDestroy()
     }
@@ -110,7 +111,8 @@ class MainActivity : AppCompatActivity() {
                 errorResponse: WebResourceResponse?,
             ) {
                 if (request?.isForMainFrame == true) {
-                    showError(getString(R.string.err_load_failed, errorResponse?.statusCode.toString()))
+                    val code = errorResponse?.statusCode?.toString() ?: "???"
+                    showError(getString(R.string.err_load_failed, code))
                 }
             }
 

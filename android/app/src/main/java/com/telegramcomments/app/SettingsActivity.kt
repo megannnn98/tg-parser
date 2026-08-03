@@ -1,6 +1,7 @@
 package com.telegramcomments.app
 
 import android.os.Bundle
+import android.view.inputmethod.EditorInfo
 import androidx.appcompat.app.AppCompatActivity
 import com.telegramcomments.app.databinding.ActivitySettingsBinding
 
@@ -21,6 +22,14 @@ class SettingsActivity : AppCompatActivity() {
         binding.urlInput.setText(settingsStore.getUrl())
 
         binding.saveButton.setOnClickListener { onSavePressed() }
+        binding.urlInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                onSavePressed()
+                true
+            } else {
+                false
+            }
+        }
     }
 
     private fun onSavePressed() {
@@ -35,7 +44,6 @@ class SettingsActivity : AppCompatActivity() {
             is ValidationResult.Valid -> {
                 binding.urlInputLayout.error = null
                 settingsStore.setUrl(result.normalized)
-                binding.urlInput.setText(result.normalized)
                 finish()
             }
         }
