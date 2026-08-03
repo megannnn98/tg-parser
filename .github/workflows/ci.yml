@@ -78,7 +78,9 @@ jobs:
         run: |
           cz bump --yes || cz bump --yes --increment PATCH
 
-      - name: Push release commit and tag
+      - name: Push release branch and tag
         run: |
-          git push origin HEAD:main
+          release_branch="release/ci-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}"
+          git push origin "HEAD:${release_branch}"
           git push --follow-tags
+          echo "Release commit pushed to ${release_branch}. Open a pull request into main to satisfy branch protection."
