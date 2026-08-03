@@ -252,6 +252,61 @@ Back-кнопка ходит по истории WebView (а не закрыва
 FastAPI или за reverse-proxy и впишите в настройки `https://...`. Самоподписанные
 сертификаты не поддерживаются — только системные.
 
+### Бэкенд на самом телефоне через Termux
+
+Если отдельного компьютера нет и FastAPI-сервер должен работать на самом
+телефоне, используйте **Termux** — нативный Linux-терминал под Android. Существующий
+Python-код (парсер, FastAPI, pyrogram) запускается в нём без изменений; WebView-APK
+на том же телефоне подключается к `http://127.0.0.1:8000`.
+
+1. **Поставьте Termux** — только версию с [F-Droid](https://f-droid.org/packages/com.termux/);
+   вариант в Google Play устарел и не обновляется.
+2. В Termux поставьте Python и git:
+   ```
+   pkg update && pkg install -y python git
+   ```
+3. Склонируйте репозиторий и поставьте зависимости:
+   ```
+   git clone https://github.com/megannnn98/tg-parser.git telegram-comments
+   cd telegram-comments
+   pip install -r requirements.txt
+   ```
+   Если `pip` упадёт на сборке `tgcrypto` (C-extension), либо поставьте
+   `pkg install -y build-essential clang` и повторите, либо удалите
+   `tgcrypto` из `requirements.txt` — pyrogram работает и без него через
+   `pyaes`, медленнее в несколько раз, но для личного использования
+   незаметно.
+4. **Один раз войдите в Telegram** интерактивно:
+   ```
+   cp .env.docker .env    # при желании поправьте API_ID/API_HASH/LIMIT
+   python main.py collect
+   ```
+   Pyrogram спросит номер телефона и код из основного приложения Telegram;
+   сессия сохранится в `my_session.session` внутри Termux.
+5. **Запустите web UI**:
+   ```
+   termux-wake-lock
+   python -m uvicorn web.app:app --host 127.0.0.1 --port 8000
+   ```
+   `termux-wake-lock` удерживает CPU активным, чтобы Android не убил процесс
+   в фоне. После остановки uvicorn отпустите блокировку: `termux-wake-unlock`.
+6. В WebView-приложении впишите URL `http://127.0.0.1:8000`.
+
+**Ограничения Termux-пути:**
+
+- Android всё равно может убить Termux при сильной нехватке памяти.
+  Долгие скачивания (`user-comments` на большом списке каналов,
+  `discover-channels`) запускайте с телефоном на зарядке и Termux в
+  foreground.
+- Автозапуск при загрузке телефона — отдельное приложение
+  [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot) со скриптом в
+  `~/.termux/boot/`.
+- Батарея: pyrogram держит WebSocket к Telegram открытым; расход заметный,
+  для длительных сессий — телефон на зарядку.
+- Повторный вход в ту же Telegram-аккаунт с телефона параллелен десктопной
+  сессии — Telegram это разрешает, но при определённых условиях может
+  потребовать повторного ввода кода.
+
 ## Поиск пользователя по отображаемому имени
 
 `user-comments` принимает только `@username` или числовой `tg_id` — отображаемое имя

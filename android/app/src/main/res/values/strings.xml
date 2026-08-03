@@ -4,7 +4,7 @@
     <string name="settings_title">Настройки</string>
 
     <string name="settings_url_hint">URL бэкенда</string>
-    <string name="settings_url_example">например: http://192.168.1.5:8000</string>
+    <string name="settings_url_example">например: http://127.0.0.1:8000 (Termux на телефоне) или http://192.168.1.5:8000 (отдельный ПК)</string>
     <string name="settings_save_and_open">Сохранить и открыть</string>
 
     <string name="menu_reload">Обновить</string>
