@@ -289,7 +289,7 @@ def test_export_user_comments_returns_text_with_attachment_header(tmp_path: Path
         resp = client.get("/users/vasya_7.db/comments.txt")
 
     assert resp.status_code == 200
-    assert resp.text == "2026-08-01 | chan_a\nhello\n\n2026-08-02 | chan_b\nworld"
+    assert resp.text == "hello\n\nworld"
     assert resp.headers["content-type"].startswith("text/plain")
     content_disposition = resp.headers["content-disposition"]
     assert "attachment" in content_disposition

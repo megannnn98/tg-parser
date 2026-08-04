@@ -216,9 +216,7 @@ def test_render_user_comments_text_joins_entries_with_blank_line(tmp_path: Path)
 
     text = render_user_comments_text(comments)
 
-    assert text == (
-        "2026-08-01 | chan_a\nhello\n\n2026-08-02 | chan_b\nworld"
-    )
+    assert text == "hello\n\nworld"
 
 
 def test_list_user_profiles_logs_unreadable_databases(

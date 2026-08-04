@@ -141,7 +141,7 @@ def fetch_user_comments(db_path: Path, tg_id: int) -> list[UserComment]:
 
 
 def render_user_comments_text(comments: list[UserComment]) -> str:
-    return "\n\n".join(f"{c.date} | {c.channel}\n{c.text}" for c in comments)
+    return "\n\n".join(c.text for c in comments)
 
 
 def fetch_hourly_activity(db_path: Path, tg_id: int) -> list[HourlyActivity]:
