@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from config import CHANNELS, CHANNELS_PATH
 from parser.channels_store import InvalidChannelError, parse_channels_text, save_channels
-from parser.user_profile import UserProfileError, list_user_profiles, load_user_profile
+from parser.user_profile import (
+    UserProfileError,
+    fetch_user_comments,
+    list_user_profiles,
+    load_user_profile,
+    render_user_comments_text,
+)
 from parser.utils import parse_user_ref
 from web.jobs import JobAlreadyRunningError, JobRegistry
 
@@ -102,6 +109,32 @@ def create_app(
             "profile.html",
             {
                 "profile": profile,
+            },
+        )
+
+    @app.get("/users/{db_name}/comments.txt")
+    def export_user_comments(db_name: str):
+        db_path = _resolve_user_db(app.state.data_dir, db_name)
+        try:
+            profile = load_user_profile(db_path)
+        except UserProfileError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="User database not found",
+            ) from exc
+
+        comments = fetch_user_comments(db_path, profile.tg_id)
+        text = render_user_comments_text(comments)
+
+        filename = f"{Path(db_name).stem}.txt"
+        return PlainTextResponse(
+            text,
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{profile.tg_id}.txt"; '
+                    f"filename*=UTF-8''{quote(filename)}"
+                )
             },
         )
 

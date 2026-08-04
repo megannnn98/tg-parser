@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import time
 from pathlib import Path
 
@@ -8,6 +9,32 @@ from fastapi.testclient import TestClient
 
 from web.app import _resolve_user_db, create_app
 from web.jobs import JobRegistry
+
+
+def _create_user_db(db_path: Path, rows: list[tuple[int, str | None, str, int, str, str]]):
+    with sqlite3.connect(db_path) as db:
+        db.execute(
+            """
+            CREATE TABLE user_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tg_id INTEGER NOT NULL,
+                username TEXT,
+                channel TEXT NOT NULL,
+                message_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                date TEXT NOT NULL,
+                UNIQUE(channel, message_id)
+            )
+            """
+        )
+        db.executemany(
+            """
+            INSERT INTO user_messages
+            (tg_id, username, channel, message_id, text, date)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
 
 
 def test_resolve_user_db_allows_direct_db_file(tmp_path: Path):
@@ -144,6 +171,50 @@ def test_save_channels_list_persists_and_updates_app_state(tmp_path: Path):
     assert resp.json() == {"channels": ["chan_a", "chan_b"]}
     assert json.loads(channels_path.read_text()) == ["chan_a", "chan_b"]
     assert app.state.channels == ["chan_a", "chan_b"]
+
+
+def test_show_user_renders_refresh_and_export_controls(tmp_path: Path):
+    db_path = tmp_path / "vasya_7.db"
+    _create_user_db(db_path, [(7, "vasya", "chan_a", 1, "hello", "2026-08-01")])
+    app = create_app(data_dir=tmp_path, channels=["chan_a"])
+
+    with TestClient(app) as client:
+        resp = client.get("/users/vasya_7.db")
+
+    assert resp.status_code == 200
+    assert 'id="refresh-button"' in resp.text
+    assert "/users/vasya_7.db/comments.txt" in resp.text
+
+
+def test_export_user_comments_returns_text_with_attachment_header(tmp_path: Path):
+    db_path = tmp_path / "vasya_7.db"
+    _create_user_db(
+        db_path,
+        [
+            (7, "vasya", "chan_a", 1, "hello", "2026-08-01"),
+            (7, "vasya", "chan_b", 2, "world", "2026-08-02"),
+        ],
+    )
+    app = create_app(data_dir=tmp_path, channels=["chan_a"])
+
+    with TestClient(app) as client:
+        resp = client.get("/users/vasya_7.db/comments.txt")
+
+    assert resp.status_code == 200
+    assert resp.text == "2026-08-01 | chan_a\nhello\n\n2026-08-02 | chan_b\nworld"
+    assert resp.headers["content-type"].startswith("text/plain")
+    content_disposition = resp.headers["content-disposition"]
+    assert "attachment" in content_disposition
+    assert "vasya_7.txt" in content_disposition
+
+
+def test_export_user_comments_returns_404_for_unknown_db(tmp_path: Path):
+    app = create_app(data_dir=tmp_path, channels=["chan_a"])
+
+    with TestClient(app) as client:
+        resp = client.get("/users/ghost_1.db/comments.txt")
+
+    assert resp.status_code == 404
 
 
 def test_save_channels_list_rejects_invalid_line(tmp_path: Path):

@@ -33,6 +33,13 @@ class ChannelProfile:
 
 
 @dataclass(frozen=True)
+class UserComment:
+    channel: str
+    date: str
+    text: str
+
+
+@dataclass(frozen=True)
 class UserProfile:
     db_name: str
     tg_id: int
@@ -97,6 +104,29 @@ def load_user_profile(db_path: Path) -> UserProfile:
         channel_count=len(channels),
         channels=channels,
     )
+
+
+def fetch_user_comments(db_path: Path, tg_id: int) -> list[UserComment]:
+    with _connect_readonly(db_path) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            """
+            SELECT channel, date, text
+            FROM user_messages
+            WHERE tg_id = ?
+            ORDER BY date, channel, message_id
+            """,
+            (tg_id,),
+        ).fetchall()
+
+    return [
+        UserComment(channel=row["channel"], date=row["date"], text=row["text"])
+        for row in rows
+    ]
+
+
+def render_user_comments_text(comments: list[UserComment]) -> str:
+    return "\n\n".join(f"{c.date} | {c.channel}\n{c.text}" for c in comments)
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
