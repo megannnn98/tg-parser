@@ -177,6 +177,32 @@ def test_fetch_user_comments_orders_by_date_then_channel_then_message_id(
     ]
 
 
+def test_fetch_user_comments_breaks_same_date_ties_by_channel(tmp_path: Path):
+    db_path = tmp_path / "vasya_7.db"
+    _create_comments_db(
+        db_path,
+        [
+            (7, "chan_c", 2, "chan_c later id", "2026-08-01"),
+            (7, "chan_b", 1, "chan_b earlier id", "2026-08-01"),
+            (7, "chan_a", 1, "chan_a earlier id", "2026-08-01"),
+        ],
+    )
+
+    comments = fetch_user_comments(db_path, tg_id=7)
+
+    assert [c.channel for c in comments] == ["chan_a", "chan_b", "chan_c"]
+
+
+def test_fetch_user_comments_returns_empty_list_without_user_messages_table(
+    tmp_path: Path,
+):
+    db_path = tmp_path / "empty_7.db"
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+
+    assert fetch_user_comments(db_path, tg_id=7) == []
+
+
 def test_render_user_comments_text_joins_entries_with_blank_line(tmp_path: Path):
     db_path = tmp_path / "vasya_7.db"
     _create_comments_db(

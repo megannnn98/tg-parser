@@ -109,6 +109,9 @@ def load_user_profile(db_path: Path) -> UserProfile:
 def fetch_user_comments(db_path: Path, tg_id: int) -> list[UserComment]:
     with _connect_readonly(db_path) as db:
         db.row_factory = sqlite3.Row
+        if not _has_user_messages(db):
+            return []
+
         rows = db.execute(
             """
             SELECT channel, date, text
