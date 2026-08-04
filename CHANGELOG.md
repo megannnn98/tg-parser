@@ -1,3 +1,13 @@
+## v0.4.1 (2026-08-04)
+
+### Feat
+
+- **web**: add refresh and txt export on user profile page
+
+### Fix
+
+- **user_profile**: guard fetch_user_comments against missing table
+
 ## v0.5.0 (2026-08-04)
 
 ### Feat
