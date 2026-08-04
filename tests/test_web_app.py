@@ -235,6 +235,45 @@ def test_show_user_renders_refresh_and_export_controls(tmp_path: Path):
     assert "/users/vasya_7.db/comments.txt" in resp.text
 
 
+def test_show_user_includes_activity_charts(tmp_path: Path):
+    db_path = tmp_path / "vasya_7.db"
+    _create_user_db(
+        db_path,
+        [
+            (7, "vasya", "chan_a", 1, "hello", "2026-08-01 08:00:00"),
+            (7, "vasya", "chan_a", 2, "world", "2026-08-01 14:00:00"),
+            (7, "vasya", "chan_b", 3, "again", "2026-08-02 14:30:00"),
+        ],
+    )
+    app = create_app(data_dir=tmp_path, channels=["chan_a"])
+
+    with TestClient(app) as client:
+        resp = client.get("/users/vasya_7.db")
+
+    assert resp.status_code == 200
+    assert "Активность" in resp.text
+    assert "По часам" in resp.text
+    assert "По дням" in resp.text
+    assert 'aria-label="График активности по часам"' in resp.text
+    assert 'aria-label="График активности по дням"' in resp.text
+    assert '1 сообщений в 8:00' in resp.text
+    assert '2 сообщений в 14:00' in resp.text
+    assert '2 сообщений за 2026-08-01' in resp.text
+    assert '1 сообщений за 2026-08-02' in resp.text
+
+
+def test_show_user_handles_empty_activity(tmp_path: Path):
+    db_path = tmp_path / "vasya_7.db"
+    _create_user_db(db_path, [(7, "vasya", "chan_a", 1, "hello", "2026-08-01")])
+    app = create_app(data_dir=tmp_path, channels=["chan_a"])
+
+    with TestClient(app) as client:
+        resp = client.get("/users/vasya_7.db")
+
+    assert resp.status_code == 200
+    assert "Активность" in resp.text
+
+
 def test_export_user_comments_returns_text_with_attachment_header(tmp_path: Path):
     db_path = tmp_path / "vasya_7.db"
     _create_user_db(

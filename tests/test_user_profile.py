@@ -232,3 +232,131 @@ def test_list_user_profiles_logs_unreadable_databases(
 
     assert [profile.db_name for profile in profiles] == ["vasya_7.db"]
     assert "Skipped unreadable user database" in caplog.text
+
+
+def _create_activity_db(
+    db_path: Path, rows: list[tuple[int, str, str]]
+) -> None:
+    with sqlite3.connect(db_path) as db:
+        db.execute(
+            """
+            CREATE TABLE user_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tg_id INTEGER NOT NULL,
+                username TEXT,
+                channel TEXT NOT NULL,
+                message_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                date TEXT NOT NULL,
+                UNIQUE(channel, message_id)
+            )
+            """
+        )
+        db.executemany(
+            """
+            INSERT INTO user_messages
+            (tg_id, username, channel, message_id, text, date)
+            VALUES (?, 'vasya', 'test_channel', ?, 'text', ?)
+            """,
+            rows,
+        )
+
+
+def test_fetch_hourly_activity_groups_by_hour(tmp_path: Path):
+    from parser.user_profile import fetch_hourly_activity
+
+    db_path = tmp_path / "test.db"
+    _create_activity_db(
+        db_path,
+        [
+            (7, 1, "2026-08-01 14:00:00"),
+            (7, 2, "2026-08-01 14:30:00"),
+            (7, 3, "2026-08-01 14:59:00"),
+            (7, 4, "2026-08-01 08:00:00"),
+            (7, 5, "2026-08-02 14:00:00"),
+            (8, 6, "2026-08-01 23:00:00"),
+        ],
+    )
+
+    result = fetch_hourly_activity(db_path, tg_id=7)
+
+    assert len(result) == 24
+    result_by_hour = {r.hour: r.count for r in result}
+    assert result_by_hour[8] == 1
+    assert result_by_hour[14] == 4
+    assert result_by_hour[0] == 0
+
+
+def test_fetch_hourly_activity_returns_empty_on_missing_table(tmp_path: Path):
+    from parser.user_profile import fetch_hourly_activity
+
+    db_path = tmp_path / "empty.db"
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+
+    assert fetch_hourly_activity(db_path, tg_id=7) == []
+
+
+def test_fetch_hourly_activity_returns_zeroes_for_no_matching_rows(
+    tmp_path: Path,
+):
+    from parser.user_profile import fetch_hourly_activity
+
+    db_path = tmp_path / "test.db"
+    _create_activity_db(db_path, [(7, 1, "2026-08-01 10:00:00")])
+
+    result = fetch_hourly_activity(db_path, tg_id=99)
+
+    assert len(result) == 24
+    assert all(r.count == 0 for r in result)
+
+
+def test_fetch_daily_activity_orders_by_date(tmp_path: Path):
+    from parser.user_profile import fetch_daily_activity
+
+    db_path = tmp_path / "test.db"
+    _create_activity_db(
+        db_path,
+        [
+            (7, 1, "2026-08-03 10:00:00"),
+            (7, 2, "2026-08-01 09:00:00"),
+            (7, 3, "2026-08-01 10:00:00"),
+            (7, 4, "2026-08-02 15:00:00"),
+        ],
+    )
+
+    result = fetch_daily_activity(db_path, tg_id=7)
+
+    assert [(r.date, r.count) for r in result] == [
+        ("2026-08-01", 2),
+        ("2026-08-02", 1),
+        ("2026-08-03", 1),
+    ]
+
+
+def test_fetch_daily_activity_skips_other_users(tmp_path: Path):
+    from parser.user_profile import fetch_daily_activity
+
+    db_path = tmp_path / "test.db"
+    _create_activity_db(
+        db_path,
+        [
+            (7, 1, "2026-08-01 10:00:00"),
+            (7, 2, "2026-08-01 11:00:00"),
+            (8, 3, "2026-08-01 12:00:00"),
+        ],
+    )
+
+    result = fetch_daily_activity(db_path, tg_id=7)
+
+    assert [(r.date, r.count) for r in result] == [("2026-08-01", 2)]
+
+
+def test_fetch_daily_activity_returns_empty_on_missing_table(tmp_path: Path):
+    from parser.user_profile import fetch_daily_activity
+
+    db_path = tmp_path / "empty.db"
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+
+    assert fetch_daily_activity(db_path, tg_id=7) == []

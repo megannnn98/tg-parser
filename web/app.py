@@ -13,6 +13,8 @@ from config import CHANNELS, CHANNELS_PATH
 from parser.channels_store import InvalidChannelError, parse_channels_text, save_channels
 from parser.user_profile import (
     UserProfileError,
+    fetch_daily_activity,
+    fetch_hourly_activity,
     fetch_user_comments,
     list_user_profiles,
     load_user_profile,
@@ -113,11 +115,16 @@ def create_app(
                 detail="User database not found",
             ) from exc
 
+        hourly = fetch_hourly_activity(db_path, profile.tg_id)
+        daily = fetch_daily_activity(db_path, profile.tg_id)
+
         return templates.TemplateResponse(
             request,
             "profile.html",
             {
                 "profile": profile,
+                "hourly_activity": hourly,
+                "daily_activity": daily,
             },
         )
 

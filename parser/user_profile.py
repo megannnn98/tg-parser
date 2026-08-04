@@ -33,6 +33,18 @@ class ChannelProfile:
 
 
 @dataclass(frozen=True)
+class HourlyActivity:
+    hour: int
+    count: int
+
+
+@dataclass(frozen=True)
+class DailyActivity:
+    date: str
+    count: int
+
+
+@dataclass(frozen=True)
 class UserComment:
     channel: str
     date: str
@@ -130,6 +142,55 @@ def fetch_user_comments(db_path: Path, tg_id: int) -> list[UserComment]:
 
 def render_user_comments_text(comments: list[UserComment]) -> str:
     return "\n\n".join(f"{c.date} | {c.channel}\n{c.text}" for c in comments)
+
+
+def fetch_hourly_activity(db_path: Path, tg_id: int) -> list[HourlyActivity]:
+    with _connect_readonly(db_path) as db:
+        db.row_factory = sqlite3.Row
+        if not _has_user_messages(db):
+            return []
+
+        rows = db.execute(
+            """
+            SELECT CAST(SUBSTR(date, 12, 2) AS INTEGER) AS hour,
+                   COUNT(*) AS count
+            FROM user_messages
+            WHERE tg_id = ? AND LENGTH(date) >= 19
+            GROUP BY hour
+            ORDER BY hour
+            """,
+            (tg_id,),
+        ).fetchall()
+
+    counts = {int(row["hour"]): row["count"] for row in rows}
+    return [
+        HourlyActivity(hour=h, count=counts.get(h, 0))
+        for h in range(24)
+    ]
+
+
+def fetch_daily_activity(db_path: Path, tg_id: int) -> list[DailyActivity]:
+    with _connect_readonly(db_path) as db:
+        db.row_factory = sqlite3.Row
+        if not _has_user_messages(db):
+            return []
+
+        rows = db.execute(
+            """
+            SELECT SUBSTR(date, 1, 10) AS day,
+                   COUNT(*) AS count
+            FROM user_messages
+            WHERE tg_id = ? AND LENGTH(date) >= 19
+            GROUP BY day
+            ORDER BY day
+            """,
+            (tg_id,),
+        ).fetchall()
+
+    return [
+        DailyActivity(date=row["day"], count=row["count"])
+        for row in rows
+    ]
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
