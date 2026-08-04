@@ -10,7 +10,15 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from config import CHANNELS, CHANNELS_PATH
-from parser.channels_store import InvalidChannelError, parse_channels_text, save_channels
+from parser.channels_store import (
+    InvalidChannelError,
+    parse_channels_text,
+    save_channels,
+)
+from parser.political_coords import (
+    PoliticalCoordsError,
+    analyze_political_coords,
+)
 from parser.user_profile import (
     UserProfileError,
     fetch_daily_activity,
@@ -22,7 +30,6 @@ from parser.user_profile import (
 )
 from parser.utils import parse_user_ref
 from web.jobs import JobAlreadyRunningError, JobRegistry
-
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -153,6 +160,35 @@ def create_app(
                 )
             },
         )
+
+    @app.post("/users/{db_name}/political-coords")
+    async def analyze_political(db_name: str):
+        db_path = _resolve_user_db(app.state.data_dir, db_name)
+        try:
+            profile = load_user_profile(db_path)
+        except UserProfileError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="User database not found",
+            ) from exc
+
+        try:
+            result = await analyze_political_coords(db_path, profile.tg_id)
+        except PoliticalCoordsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return {
+            "total_messages": result.total_messages,
+            "signal_count": result.signal_count,
+            "bars": result.render_bars(),
+            "axes": {
+                key: {
+                    "left_count": stats.left_count,
+                    "right_count": stats.right_count,
+                }
+                for key, stats in result.axes.items()
+            },
+        }
 
     return app
 
