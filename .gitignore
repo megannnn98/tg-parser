@@ -6,3 +6,7 @@ out.txt
 /data/telegram-comments-classify.log
 /data/telegram-comments-translate.log
 /data
+.venv-gpu/
+data/model.pt
+data/tokenizer/
+.env

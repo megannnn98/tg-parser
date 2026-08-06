@@ -18,6 +18,16 @@ from src.political_model.model import AXIS_NAMES, DEVICE, PoliticalBertRegressor
 logging.basicConfig(level=logging.INFO)
 _logger = logging.getLogger("political_model_train")
 
+# Веса для MSE loss на основе variance осей (определено эмпирически)
+AXIS_WEIGHTS = {
+    "democracy": 2.0,   # низкий sign_acc
+    "social": 1.5,       # средний sign_acc
+    "economic": 1.0,
+    "authority": 1.0,
+    "nationalism": 1.0,
+    "militarism": 1.0,
+}
+
 
 class PoliticalDataset(Dataset):
     def __init__(self, data_path: Path, tokenizer, max_length: int = 512) -> None:
@@ -79,7 +89,7 @@ def train_epoch(model: PoliticalBertRegressor, dataloader: DataLoader, optimizer
         loss = torch.tensor(0.0, device=DEVICE)
         for axis in AXIS_NAMES:
             axis_loss = criterion(outputs[axis], targets[axis])
-            loss += axis_loss
+            loss += axis_loss * AXIS_WEIGHTS[axis]
             axis_losses[axis] += axis_loss.item()
 
         loss.backward()
@@ -116,7 +126,7 @@ def validate(model: PoliticalBertRegressor, dataloader: DataLoader, criterion: n
             loss = torch.tensor(0.0, device=DEVICE)
             for axis in AXIS_NAMES:
                 axis_loss = criterion(outputs[axis], targets[axis])
-                loss += axis_loss
+                loss += axis_loss * AXIS_WEIGHTS[axis]
                 axis_losses[axis] += axis_loss.item()
                 axis_sign_acc[axis] += sign_accuracy(outputs[axis], targets[axis])
 
@@ -132,7 +142,7 @@ def train(
     data_path: Path,
     output_path: Path,
     model_name: str = "DeepPavlov/rubert-base-cased",
-    batch_size: int = 16,
+    batch_size: int = 32,
     learning_rate: float = 2e-5,
     epochs: int = 10,
     early_stopping_patience: int = 3,
@@ -163,7 +173,7 @@ def train(
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)
     criterion = nn.MSELoss()
 
     best_val_loss = float("inf")
@@ -185,6 +195,7 @@ def train(
             best_val_loss = val_losses["total"]
             patience_counter = 0
             torch.save(model.state_dict(), output_path)
+            model.tokenizer.save_pretrained(output_path.parent / "tokenizer")
             _logger.info("Saved best model to %s (val loss: %.4f)", output_path, best_val_loss)
         else:
             patience_counter += 1

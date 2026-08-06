@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 import torch
 
-from src.political_model.model import AXIS_NAMES, PoliticalBertRegressor
+from src.political_model.model import AXIS_NAMES, DEVICE, PoliticalBertRegressor
 
 
 @pytest.fixture(scope="module")
 def model() -> PoliticalBertRegressor:
-    return PoliticalBertRegressor()
+    return PoliticalBertRegressor().to(DEVICE)
 
 
 def test_model_forward_output_shape(model: PoliticalBertRegressor) -> None:
