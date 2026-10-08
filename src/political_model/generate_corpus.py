@@ -17,12 +17,13 @@ load_dotenv()
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from parser.logger import get_logger
+from parser.llm_config import CHAT_COMPLETIONS_URL, openrouter_model, openrouter_options
 from parser.political_coords import AXIS_LABELS, SYSTEM_PROMPT as SCORING_SYSTEM_PROMPT
 
 _logger = get_logger("generate_corpus")
 
 OUTPUT_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "synthetic_corpus.jsonl"
-API_URL = "https://api.deepseek.com/v1/chat/completions"
+API_URL = CHAT_COMPLETIONS_URL
 SAMPLES_PER_CALL = 10
 MAX_CONCURRENT = 4
 
@@ -163,7 +164,8 @@ async def _call_deepseek(
         API_URL,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         json={
-            "model": "deepseek-chat",
+            "model": openrouter_model(),
+            **openrouter_options(),
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -174,7 +176,7 @@ async def _call_deepseek(
     )
 
     if resp.status_code != 200:
-        raise RuntimeError(f"DeepSeek API error {resp.status_code}: {resp.text[:500]}")
+        raise RuntimeError(f"OpenRouter API error {resp.status_code}")
 
     return resp.json()["choices"][0]["message"]["content"]
 
@@ -425,9 +427,9 @@ async def generate_corpus(
 
 
 async def main():
-    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
-        _logger.error("DEEPSEEK_API_KEY is not set")
+        _logger.error("OPENROUTER_API_KEY is not set")
         return
 
     import argparse

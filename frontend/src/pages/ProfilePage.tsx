@@ -7,6 +7,7 @@ import { DailyChart, HourlyChart, WeekHeatmap } from "@/components/ActivityChart
 import { ChannelShares } from "@/components/ChannelShares";
 import { CollectProgress } from "@/components/CollectProgress";
 import { PoliticalBars } from "@/components/PoliticalBars";
+import { PositionComparisons } from "@/components/PositionComparisons";
 import { QueryState } from "@/components/QueryState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +41,7 @@ export function ProfilePage() {
     political.reset();
     void queryClient.invalidateQueries({ queryKey: ["user"] });
     void queryClient.invalidateQueries({ queryKey: ["profiles"] });
+    void queryClient.invalidateQueries({ queryKey: ["position-comparisons"] });
     navigate(`/users/${encodeURIComponent(job.db_name!)}`);
   });
 
@@ -113,6 +115,8 @@ export function ProfilePage() {
           {profile.total_messages === 0 ? (
             <p className="text-sm text-muted-foreground">Комментарии в выбранных каналах не найдены.</p>
           ) : null}
+
+          <PositionComparisons dbName={dbName} hasComments={profile.total_messages > 0} />
 
           <Card>
             <CardContent>

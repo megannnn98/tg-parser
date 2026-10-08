@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
@@ -29,6 +30,10 @@ from parser.user_profile import (
     render_user_comments_text,
 )
 from parser.utils import parse_user_ref
+from parser.position_analysis import PositionAnalysis
+from parser.local_text_analysis import LocalTextAnalysis
+from parser.position_comparison import AnalysisProgress, PositionResults
+from web.position_jobs import PositionJobs
 from web.frontend import frontend_dist as default_frontend_dist
 from web.frontend import mount_frontend
 from web.jobs import JobAlreadyRunningError, JobRegistry
@@ -163,18 +168,43 @@ async def analyze_political(request: Request, db_name: str):
     )
 
 
+@api.get("/users/{db_name}/position-comparisons", response_model=PositionResults)
+def get_position_comparisons(request: Request, db_name: str):
+    profile = _load_profile(_resolve_user_db(request.app.state.data_dir, db_name))
+    return request.app.state.position_jobs.service.results(profile.tg_id)
+
+
+@api.post("/position-analysis", status_code=202, response_model=AnalysisProgress)
+async def start_position_analysis(request: Request):
+    try:
+        return request.app.state.position_jobs.start()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def create_app(
     data_dir: Path | None = None,
     channels: list[str] | None = None,
     channels_path: Path | None = None,
     job_registry: JobRegistry | None = None,
     frontend_dist: Path | None = None,
+    position_service: PositionAnalysis | None = None,
 ) -> FastAPI:
-    app = FastAPI(title="Telegram user profiles")
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            await app.state.position_jobs.close()
+
+    app = FastAPI(title="Telegram user profiles", lifespan=lifespan)
     app.state.data_dir = data_dir or Path(os.getenv("DATA_DIR", "data"))
     app.state.channels = channels if channels is not None else CHANNELS
     app.state.channels_path = channels_path or CHANNELS_PATH
     app.state.job_registry = job_registry if job_registry is not None else JobRegistry()
+    app.state.position_jobs = PositionJobs(
+        position_service or LocalTextAnalysis(app.state.data_dir)
+    )
 
     app.include_router(api, prefix="/api/v1")
     mount_frontend(app, frontend_dist or default_frontend_dist())

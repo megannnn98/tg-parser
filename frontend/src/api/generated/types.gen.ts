@@ -5,6 +5,98 @@ export type ClientOptions = {
 };
 
 /**
+ * AnalysisProgress
+ */
+export type AnalysisProgress = {
+    /**
+     * State
+     */
+    state: 'idle' | 'running' | 'done' | 'error' | 'interrupted' | 'provider_changed';
+    /**
+     * Phase
+     */
+    phase: string;
+    /**
+     * Processed Comments
+     */
+    processed_comments: number;
+    /**
+     * Total Comments
+     */
+    total_comments: number;
+    /**
+     * Cached Comments
+     */
+    cached_comments: number;
+    /**
+     * Rejected Comments
+     */
+    rejected_comments: number;
+    /**
+     * Rejection Reasons
+     */
+    rejection_reasons: {
+        [key: string]: number;
+    };
+    /**
+     * Processed Embeddings
+     */
+    processed_embeddings: number;
+    /**
+     * Total Embeddings
+     */
+    total_embeddings: number;
+    /**
+     * Cached Embeddings
+     */
+    cached_embeddings: number;
+    /**
+     * Processed Questions
+     */
+    processed_questions: number;
+    /**
+     * Total Questions
+     */
+    total_questions: number;
+    /**
+     * Extraction Requests
+     */
+    extraction_requests: number;
+    /**
+     * Split Batches
+     */
+    split_batches: number;
+    /**
+     * Activity
+     */
+    activity: string;
+    /**
+     * Updated At
+     */
+    updated_at: string | null;
+    /**
+     * Processed Pairs
+     */
+    processed_pairs: number;
+    /**
+     * Total Pairs
+     */
+    total_pairs: number;
+    /**
+     * Processed Relations
+     */
+    processed_relations: number;
+    /**
+     * Total Relations
+     */
+    total_relations: number;
+    /**
+     * Error
+     */
+    error: string | null;
+};
+
+/**
  * AxisCounts
  */
 export type AxisCounts = {
@@ -101,6 +193,56 @@ export type CollectRequest = {
 };
 
 /**
+ * Comparison
+ */
+export type Comparison = {
+    /**
+     * Tg Id
+     */
+    tg_id: number;
+    /**
+     * Db Name
+     */
+    db_name: string;
+    /**
+     * Display Username
+     */
+    display_username: string;
+    /**
+     * Score
+     */
+    score: number | null;
+    /**
+     * Comparable Questions
+     */
+    comparable_questions: number;
+    /**
+     * Common Questions
+     */
+    common_questions: number;
+    /**
+     * Agreements
+     */
+    agreements: number;
+    /**
+     * Partial
+     */
+    partial: number;
+    /**
+     * Disagreements
+     */
+    disagreements: number;
+    /**
+     * Eligible
+     */
+    eligible: boolean;
+    /**
+     * Questions
+     */
+    questions: Array<QuestionMatch>;
+};
+
+/**
  * DayCount
  */
 export type DayCount = {
@@ -112,6 +254,66 @@ export type DayCount = {
      * Count
      */
     count: number;
+};
+
+/**
+ * EmbeddingDetails
+ */
+export type EmbeddingDetails = {
+    /**
+     * Model
+     */
+    model: string;
+    /**
+     * Version
+     */
+    version: string;
+    /**
+     * Dimensions
+     */
+    dimensions: number;
+    /**
+     * Storage
+     */
+    storage: string;
+    /**
+     * Saved Vectors
+     */
+    saved_vectors: number;
+};
+
+/**
+ * Evidence
+ */
+export type Evidence = {
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Quote
+     */
+    quote: string;
+    /**
+     * Date
+     */
+    date: string;
+    /**
+     * Channel
+     */
+    channel: string;
+    /**
+     * Message Id
+     */
+    message_id: number;
+    /**
+     * Position
+     */
+    position: string;
+    /**
+     * Question
+     */
+    question: string;
 };
 
 /**
@@ -222,6 +424,46 @@ export type PoliticalCoords = {
 };
 
 /**
+ * PositionResults
+ */
+export type PositionResults = {
+    /**
+     * Version
+     */
+    version: string;
+    /**
+     * Needs Update
+     */
+    needs_update: boolean;
+    /**
+     * Incomplete
+     */
+    incomplete: boolean;
+    progress: AnalysisProgress;
+    embeddings: EmbeddingDetails | null;
+    /**
+     * Method
+     */
+    method: 'position_agreement' | 'text_similarity';
+    /**
+     * Similar Authors
+     */
+    similar_authors: Array<SimilarAuthor>;
+    /**
+     * Ranking
+     */
+    ranking: Array<Comparison>;
+    /**
+     * Insufficient
+     */
+    insufficient: Array<Comparison>;
+    /**
+     * Partial Results
+     */
+    partial_results: Array<Comparison>;
+};
+
+/**
  * Profile
  */
 export type Profile = {
@@ -260,6 +502,26 @@ export type Profile = {
 };
 
 /**
+ * QuestionMatch
+ */
+export type QuestionMatch = {
+    /**
+     * Question
+     */
+    question: string;
+    /**
+     * Result
+     */
+    result: 'agreement' | 'partial' | 'disagreement' | 'unclear';
+    /**
+     * Explanation
+     */
+    explanation: string;
+    left: Evidence | null;
+    right: Evidence | null;
+};
+
+/**
  * ResolvedUser
  */
 export type ResolvedUser = {
@@ -275,6 +537,52 @@ export type ResolvedUser = {
      * Display Name
      */
     display_name: string | null;
+};
+
+/**
+ * SimilarAuthor
+ */
+export type SimilarAuthor = {
+    /**
+     * Tg Id
+     */
+    tg_id: number;
+    /**
+     * Db Name
+     */
+    db_name: string;
+    /**
+     * Display Username
+     */
+    display_username: string;
+    /**
+     * Similarity
+     */
+    similarity: number;
+    /**
+     * Left Comments
+     */
+    left_comments: number;
+    /**
+     * Right Comments
+     */
+    right_comments: number;
+    /**
+     * Examples
+     */
+    examples: Array<TextMatch>;
+};
+
+/**
+ * TextMatch
+ */
+export type TextMatch = {
+    /**
+     * Similarity
+     */
+    similarity: number;
+    left: Evidence;
+    right: Evidence;
 };
 
 /**
@@ -565,3 +873,49 @@ export type AnalyzePoliticalResponses = {
 };
 
 export type AnalyzePoliticalResponse = AnalyzePoliticalResponses[keyof AnalyzePoliticalResponses];
+
+export type GetPositionComparisonsData = {
+    body?: never;
+    path: {
+        /**
+         * Db Name
+         */
+        db_name: string;
+    };
+    query?: never;
+    url: '/api/v1/users/{db_name}/position-comparisons';
+};
+
+export type GetPositionComparisonsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type GetPositionComparisonsError = GetPositionComparisonsErrors[keyof GetPositionComparisonsErrors];
+
+export type GetPositionComparisonsResponses = {
+    /**
+     * Successful Response
+     */
+    200: PositionResults;
+};
+
+export type GetPositionComparisonsResponse = GetPositionComparisonsResponses[keyof GetPositionComparisonsResponses];
+
+export type StartPositionAnalysisData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/position-analysis';
+};
+
+export type StartPositionAnalysisResponses = {
+    /**
+     * Successful Response
+     */
+    202: AnalysisProgress;
+};
+
+export type StartPositionAnalysisResponse = StartPositionAnalysisResponses[keyof StartPositionAnalysisResponses];

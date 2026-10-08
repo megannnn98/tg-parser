@@ -345,13 +345,13 @@ class TestAnalyzePoliticalCoords:
     @pytest.mark.asyncio
     async def test_no_api_key_raises(self, tmp_path: Path):
         import os
-        old_key = os.environ.pop("DEEPSEEK_API_KEY", None)
+        old_key = os.environ.pop("OPENROUTER_API_KEY", None)
         try:
             db_path = tmp_path / "user_7.db"
             _create_user_db(db_path, [(7, "user1", "chan_a", 1, "A" * 50, "2026-01-01")])
 
-            with pytest.raises(PoliticalCoordsError, match="DEEPSEEK_API_KEY"):
+            with pytest.raises(PoliticalCoordsError, match="OPENROUTER_API_KEY"):
                 await analyze_political_coords(db_path, tg_id=7, api_key="")
         finally:
             if old_key is not None:
-                os.environ["DEEPSEEK_API_KEY"] = old_key
+                os.environ["OPENROUTER_API_KEY"] = old_key

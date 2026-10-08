@@ -5,6 +5,10 @@ import { analyzePolitical, cancelCollect, collectStatus, getUser, startCollect }
 import { ProfilePage } from "@/pages/ProfilePage";
 import { failed, ok, renderPage } from "@/test/render";
 
+vi.mock("@/components/PositionComparisons", () => ({
+  PositionComparisons: () => <div>Близкие политические позиции</div>
+}));
+
 vi.mock("@/api/generated", () => ({
   getUser: vi.fn(),
   analyzePolitical: vi.fn(),
@@ -165,12 +169,12 @@ it("shows the political coordinates on demand", async () => {
 });
 
 it("shows why the political analysis failed", async () => {
-  vi.mocked(analyzePolitical).mockReturnValue(failed(400, "DEEPSEEK_API_KEY is not set") as never);
+  vi.mocked(analyzePolitical).mockReturnValue(failed(400, "OPENROUTER_API_KEY is not set") as never);
 
   renderProfile();
   fireEvent.click(await screen.findByRole("button", { name: "Определить полит взгляды" }));
 
-  expect(await screen.findByText("DEEPSEEK_API_KEY is not set")).toBeTruthy();
+  expect(await screen.findByText("OPENROUTER_API_KEY is not set")).toBeTruthy();
   expect(within(document.body).getByRole("button", { name: "Определить полит взгляды" })).toBeTruthy();
 });
 
