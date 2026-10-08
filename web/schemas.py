@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from parser.user_profile import DailyActivity, HourlyActivity, UserProfile
+from parser.user_profile import (
+    DailyActivity,
+    HourlyActivity,
+    UserProfile,
+    WeeklyActivity,
+)
 
 
 class CollectRequest(BaseModel):
@@ -72,10 +77,17 @@ class DayCount(BaseModel):
     count: int
 
 
+class WeekHourCount(BaseModel):
+    weekday: int
+    hour: int
+    count: int
+
+
 class UserDetail(BaseModel):
     profile: Profile
     hourly_activity: list[HourCount]
     daily_activity: list[DayCount]
+    weekly_activity: list[WeekHourCount]
 
     @classmethod
     def of(
@@ -83,11 +95,16 @@ class UserDetail(BaseModel):
         profile: UserProfile,
         hourly: list[HourlyActivity],
         daily: list[DailyActivity],
+        weekly: list[WeeklyActivity],
     ) -> UserDetail:
         return cls(
             profile=Profile.of(profile),
             hourly_activity=[HourCount(hour=h.hour, count=h.count) for h in hourly],
             daily_activity=[DayCount(date=d.date, count=d.count) for d in daily],
+            weekly_activity=[
+                WeekHourCount(weekday=w.weekday, hour=w.hour, count=w.count)
+                for w in weekly
+            ],
         )
 
 

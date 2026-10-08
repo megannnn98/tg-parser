@@ -108,6 +108,29 @@ def test_load_user_profile_handles_missing_username(tmp_path: Path):
     assert profile.display_username == "нет ника"
 
 
+@pytest.mark.parametrize("db_name", ["rotor8_5448422967.db", "5448422967.db"])
+def test_empty_collection_loads_and_lists_profile(tmp_path: Path, db_name: str):
+    db_path = tmp_path / db_name
+    _create_user_db(db_path, [])
+
+    profile = load_user_profile(db_path)
+
+    assert profile.tg_id == 5448422967
+    assert profile.total_messages == 0
+    assert profile.channel_count == 0
+    assert profile.channels == []
+    assert list_user_profiles(tmp_path) == [profile]
+    assert fetch_user_comments(db_path, profile.tg_id) == []
+
+
+def test_empty_database_without_user_id_is_rejected(tmp_path: Path):
+    db_path = tmp_path / "unknown.db"
+    _create_user_db(db_path, [])
+
+    with pytest.raises(UserProfileError):
+        load_user_profile(db_path)
+
+
 def test_load_user_profile_rejects_non_user_database(tmp_path: Path):
     db_path = tmp_path / "app.db"
     with sqlite3.connect(db_path) as db:
@@ -358,3 +381,38 @@ def test_fetch_daily_activity_returns_empty_on_missing_table(tmp_path: Path):
         db.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
 
     assert fetch_daily_activity(db_path, tg_id=7) == []
+
+
+def test_fetch_weekly_activity_counts_by_weekday_and_hour(tmp_path: Path):
+    from parser.user_profile import fetch_weekly_activity
+
+    db_path = tmp_path / "test.db"
+    _create_activity_db(
+        db_path,
+        [
+            (7, 1, "2026-08-03 14:00:00"),  # Monday
+            (7, 2, "2026-08-10 14:59:00"),  # the next Monday
+            (7, 3, "2026-08-03 08:00:00"),
+            (7, 4, "2026-08-02 23:30:00"),  # Sunday
+            (8, 5, "2026-08-03 14:00:00"),  # another user
+        ],
+    )
+
+    result = fetch_weekly_activity(db_path, tg_id=7)
+
+    # Monday first, every hour of every day present.
+    assert [(r.weekday, r.hour) for r in result] == [
+        (weekday, hour) for weekday in range(7) for hour in range(24)
+    ]
+    counts = {(r.weekday, r.hour): r.count for r in result if r.count}
+    assert counts == {(0, 8): 1, (0, 14): 2, (6, 23): 1}
+
+
+def test_fetch_weekly_activity_returns_empty_on_missing_table(tmp_path: Path):
+    from parser.user_profile import fetch_weekly_activity
+
+    db_path = tmp_path / "empty.db"
+    with sqlite3.connect(db_path) as db:
+        db.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+
+    assert fetch_weekly_activity(db_path, tg_id=7) == []

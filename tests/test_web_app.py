@@ -335,6 +335,36 @@ def test_api_v1_user_detail_includes_profile_and_activity(tmp_path: Path):
         {"date": "2026-08-01", "count": 2},
         {"date": "2026-08-02", "count": 1},
     ]
+    weekly = body["weekly_activity"]
+    assert len(weekly) == 7 * 24
+    # 2026-08-01 is a Saturday, 2026-08-02 a Sunday.
+    assert [cell for cell in weekly if cell["count"]] == [
+        {"weekday": 5, "hour": 8, "count": 1},
+        {"weekday": 5, "hour": 14, "count": 1},
+        {"weekday": 6, "hour": 14, "count": 1},
+    ]
+
+
+@pytest.mark.parametrize("db_name", ["rotor8_5448422967.db", "5448422967.db"])
+def test_api_v1_empty_user_profile_is_available(tmp_path: Path, db_name: str):
+    _create_user_db(tmp_path / db_name, [])
+    app = create_app(data_dir=tmp_path, channels=["chan_a"])
+
+    with TestClient(app) as client:
+        resp = client.get(f"/api/v1/users/{db_name}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["profile"]["tg_id"] == 5448422967
+        assert body["profile"]["total_messages"] == 0
+        assert body["profile"]["channel_count"] == 0
+        assert body["profile"]["channels"] == []
+        assert all(item["count"] == 0 for item in body["hourly_activity"])
+        assert body["daily_activity"] == []
+        assert all(item["count"] == 0 for item in body["weekly_activity"])
+        assert [p["db_name"] for p in client.get("/api/v1/profiles").json()] == [db_name]
+        export = client.get(f"/api/v1/users/{db_name}/comments.txt")
+        assert export.status_code == 200
+        assert export.text == ""
 
 
 def test_api_v1_user_detail_returns_404_for_unknown_db(tmp_path: Path):

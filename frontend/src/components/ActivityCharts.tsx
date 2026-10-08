@@ -1,12 +1,25 @@
 import { type KeyboardEvent, useLayoutEffect, useRef, useState } from "react";
 
-import type { DayCount, HourCount } from "@/api/generated";
-import { BASELINE_Y, barHeight, DAILY_BAR_WIDTH, dailyLayout, PLOT_LEFT, scaleMax, ticks } from "@/lib/charts";
+import type { DayCount, HourCount, WeekHourCount } from "@/api/generated";
+import {
+  BASELINE_Y,
+  barHeight,
+  DAILY_BAR_WIDTH,
+  dailyLayout,
+  heatOpacity,
+  PLOT_LEFT,
+  scaleMax,
+  ticks,
+  WEEKDAYS
+} from "@/lib/charts";
 import { cn } from "@/lib/utils";
 
 const AXIS_COLOR = "#667085";
 const GRID_COLOR = "#d9dee8";
 const HOUR_STEP = 27;
+const HEAT_ROW_STEP = 24;
+const HEAT_TOP = 8;
+const HEAT_LEGEND = [0, 0.25, 0.5, 0.75, 1];
 
 function YAxis({ max }: { max: number }) {
   return (
@@ -140,5 +153,74 @@ export function DailyChart({ days }: { days: DayCount[] }) {
         {current ? `${current.date}: ${current.count} сообщений` : "Нет сообщений по дням"}
       </p>
     </>
+  );
+}
+
+/** Messages by weekday and hour: the darker a cell, the closer it is to the busiest one. */
+export function WeekHeatmap({ cells }: { cells: WeekHourCount[] }) {
+  const max = scaleMax(cells.map((cell) => cell.count));
+  const hoursY = HEAT_TOP + 7 * HEAT_ROW_STEP + 12;
+  return (
+    <svg className="w-full" viewBox="0 0 720 216" role="img" aria-label="Активность по дням недели и часам">
+      {WEEKDAYS.map((day, weekday) => (
+        <text
+          key={day}
+          x="40"
+          y={HEAT_TOP + weekday * HEAT_ROW_STEP + 15}
+          fill={AXIS_COLOR}
+          fontSize="11"
+          textAnchor="end"
+        >
+          {day}
+        </text>
+      ))}
+      {cells.map((cell) => (
+        <rect
+          key={`${cell.weekday}-${cell.hour}`}
+          x={PLOT_LEFT + cell.hour * HOUR_STEP}
+          y={HEAT_TOP + cell.weekday * HEAT_ROW_STEP}
+          width="25"
+          height="22"
+          rx="2"
+          className={cell.count > 0 ? "fill-primary" : "fill-muted"}
+          fillOpacity={cell.count > 0 ? heatOpacity(cell.count, max) : undefined}
+        >
+          <title>{`${WEEKDAYS[cell.weekday]}, ${cell.hour}:00 — ${cell.count} сообщений`}</title>
+        </rect>
+      ))}
+      {[0, 6, 12, 18, 23].map((hour) => (
+        <text
+          key={hour}
+          x={PLOT_LEFT + hour * HOUR_STEP + 12}
+          y={hoursY}
+          fill={AXIS_COLOR}
+          fontSize="10"
+          textAnchor="middle"
+        >
+          {hour}
+        </text>
+      ))}
+      <text x="524" y={hoursY + 12} fill={AXIS_COLOR} fontSize="9" textAnchor="middle">
+        час
+      </text>
+      <text x={PLOT_LEFT} y={hoursY + 14} fill={AXIS_COLOR} fontSize="9">
+        меньше
+      </text>
+      {HEAT_LEGEND.map((share, index) => (
+        <rect
+          key={share}
+          x={PLOT_LEFT + 38 + index * 14}
+          y={hoursY + 5}
+          width="12"
+          height="12"
+          rx="2"
+          className={share > 0 ? "fill-primary" : "fill-muted"}
+          fillOpacity={share > 0 ? heatOpacity(share, 1) : undefined}
+        />
+      ))}
+      <text x={PLOT_LEFT + 38 + HEAT_LEGEND.length * 14 + 4} y={hoursY + 14} fill={AXIS_COLOR} fontSize="9">
+        {`больше (до ${max})`}
+      </text>
+    </svg>
   );
 }

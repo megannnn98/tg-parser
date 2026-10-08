@@ -51,3 +51,10 @@ export function dailyLayout(days: DayCount[]): { width: number; max: number; bar
   });
   return { width: Math.max(DAILY_MIN_WIDTH, 62 + days.length * DAILY_STEP + 40), max, bars };
 }
+
+export const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+/** Opacity of a heatmap cell: its share of the busiest one, kept visible for a single message. */
+export function heatOpacity(count: number, max: number): number {
+  return 0.15 + 0.85 * (count / max);
+}

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { analyzePolitical, getUser, type Profile } from "@/api/generated";
-import { DailyChart, HourlyChart } from "@/components/ActivityCharts";
+import { DailyChart, HourlyChart, WeekHeatmap } from "@/components/ActivityCharts";
 import { ChannelShares } from "@/components/ChannelShares";
 import { CollectProgress } from "@/components/CollectProgress";
 import { PoliticalBars } from "@/components/PoliticalBars";
@@ -45,7 +45,7 @@ export function ProfilePage() {
 
   return (
     <QueryState query={user}>
-      {({ profile, hourly_activity, daily_activity }) => (
+      {({ profile, hourly_activity, daily_activity, weekly_activity }) => (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link to="/" className="text-sm text-primary hover:underline">
@@ -55,7 +55,7 @@ export function ProfilePage() {
               <Button variant="outline" asChild>
                 <a href={`/api/v1/users/${encodeURIComponent(dbName)}/comments.txt`}>Скачать .txt</a>
               </Button>
-              <Button variant="outline" onClick={() => political.mutate()} disabled={political.isPending}>
+              <Button variant="outline" onClick={() => political.mutate()} disabled={political.isPending || profile.total_messages === 0}>
                 {political.isPending ? "Анализирую…" : "Определить полит взгляды"}
               </Button>
               {collect.running ? (
@@ -110,6 +110,10 @@ export function ProfilePage() {
             </CardContent>
           </Card>
 
+          {profile.total_messages === 0 ? (
+            <p className="text-sm text-muted-foreground">Комментарии в выбранных каналах не найдены.</p>
+          ) : null}
+
           <Card>
             <CardContent>
               <ChannelShares profile={profile} />
@@ -128,6 +132,10 @@ export function ProfilePage() {
               <div className="min-w-0 space-y-2">
                 <h3 className="font-medium">По дням</h3>
                 <DailyChart key={dbName} days={daily_activity} />
+              </div>
+              <div className="min-w-0 space-y-2">
+                <h3 className="font-medium">По дням недели и часам</h3>
+                <WeekHeatmap cells={weekly_activity} />
               </div>
             </CardContent>
           </Card>

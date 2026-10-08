@@ -35,7 +35,8 @@ function detail(username: string | null) {
     daily_activity: [
       { date: "2026-08-01", count: 2 },
       { date: "2026-08-02", count: 1 }
-    ]
+    ],
+    weekly_activity: [{ weekday: 5, hour: 8, count: 1 }]
   };
 }
 
@@ -61,6 +62,23 @@ it("shows the profile, its channels and the export link", async () => {
   expect(screen.getByRole("link", { name: "Скачать .txt" }).getAttribute("href")).toBe(
     "/api/v1/users/vasya_7.db/comments.txt"
   );
+});
+
+it("shows an empty collection without an error and disables political analysis", async () => {
+  const empty = detail(null);
+  empty.profile.total_messages = 0;
+  empty.profile.channel_count = 0;
+  empty.profile.channels = [];
+  empty.hourly_activity = [];
+  empty.daily_activity = [];
+  empty.weekly_activity = [];
+  vi.mocked(getUser).mockReturnValue(ok(empty) as never);
+
+  renderProfile();
+
+  expect(await screen.findByText("Комментарии в выбранных каналах не найдены.")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Определить полит взгляды" }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: "Обновить комментарии" }).hasAttribute("disabled")).toBe(false);
 });
 
 it("says when the database is unknown", async () => {

@@ -45,6 +45,13 @@ class DailyActivity:
 
 
 @dataclass(frozen=True)
+class WeeklyActivity:
+    weekday: int  # 0 is Monday
+    hour: int
+    count: int
+
+
+@dataclass(frozen=True)
 class UserComment:
     channel: str
     date: str
@@ -100,7 +107,7 @@ def load_user_profile(db_path: Path) -> UserProfile:
         if not _has_user_messages(db):
             raise UserProfileError(f"not a user comments database: {db_path}")
 
-        user = _fetch_primary_user(db)
+        user = _fetch_primary_user(db, db_path)
         channels = _fetch_channels(db, user["tg_id"], user["total_messages"])
 
     return UserProfile(
@@ -193,6 +200,34 @@ def fetch_daily_activity(db_path: Path, tg_id: int) -> list[DailyActivity]:
     ]
 
 
+def fetch_weekly_activity(db_path: Path, tg_id: int) -> list[WeeklyActivity]:
+    with _connect_readonly(db_path) as db:
+        db.row_factory = sqlite3.Row
+        if not _has_user_messages(db):
+            return []
+
+        # strftime('%w') counts from Sunday; shifted so that Monday is 0.
+        rows = db.execute(
+            """
+            SELECT (CAST(STRFTIME('%w', date) AS INTEGER) + 6) % 7 AS weekday,
+                   CAST(SUBSTR(date, 12, 2) AS INTEGER) AS hour,
+                   COUNT(*) AS count
+            FROM user_messages
+            WHERE tg_id = ? AND LENGTH(date) >= 19
+                  AND STRFTIME('%w', date) IS NOT NULL
+            GROUP BY weekday, hour
+            """,
+            (tg_id,),
+        ).fetchall()
+
+    counts = {(int(row["weekday"]), int(row["hour"])): row["count"] for row in rows}
+    return [
+        WeeklyActivity(weekday=weekday, hour=hour, count=counts.get((weekday, hour), 0))
+        for weekday in range(7)
+        for hour in range(24)
+    ]
+
+
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
     uri = f"file:{db_path.resolve()}?mode=ro"
     return sqlite3.connect(uri, uri=True)
@@ -209,7 +244,9 @@ def _has_user_messages(db: sqlite3.Connection) -> bool:
     return row is not None
 
 
-def _fetch_primary_user(db: sqlite3.Connection) -> sqlite3.Row:
+def _fetch_primary_user(
+    db: sqlite3.Connection, db_path: Path
+) -> sqlite3.Row | dict[str, int | str | None]:
     row = db.execute(
         """
         SELECT
@@ -231,7 +268,13 @@ def _fetch_primary_user(db: sqlite3.Connection) -> sqlite3.Row:
         """
     ).fetchone()
     if row is None:
-        raise UserProfileError("user comments database is empty")
+        # Collection creates the database even when no comments are found.
+        # Its filename retains the Telegram ID in both supported formats:
+        # <name>_<id>.db and <id>.db.
+        id_part = db_path.stem.rsplit("_", 1)[-1]
+        if not id_part.isascii() or not id_part.isdecimal():
+            raise UserProfileError("empty user database has no Telegram ID")
+        return {"tg_id": int(id_part), "username": None, "total_messages": 0}
     return row
 
 
