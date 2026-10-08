@@ -1,7 +1,7 @@
 from parser.position_comparison import Comparison, QuestionMatch, summarize
 
 import asyncio
-import sqlite3
+from position_fakes import create_source, store_for
 
 import pytest
 
@@ -11,24 +11,13 @@ def test_agreement_score_uses_equal_question_weights_and_three_question_minimum(
         QuestionMatch(question=f"q{i}", result=result, explanation="e", left=None, right=None)
         for i, result in enumerate(["agreement", "agreement", "partial", "disagreement"])
     ]
-    result = summarize(Comparison(tg_id=7, db_name="a_7.db", display_username="A", questions=matches))
+    result = summarize(Comparison(tg_id=7, display_username="A", questions=matches))
     assert result.score == 62.5
     assert result.comparable_questions == 4
     assert result.eligible
     assert (result.agreements, result.partial, result.disagreements) == (2, 1, 1)
     result.questions = matches[:2]
     assert not summarize(result).eligible
-
-
-def create_source(root, user_id, rows):
-    path = root / f"user_{user_id}.db"
-    with sqlite3.connect(path) as db:
-        db.execute("""CREATE TABLE IF NOT EXISTS user_messages (
-            id INTEGER PRIMARY KEY, tg_id INTEGER, username TEXT, channel TEXT,
-            message_id INTEGER, text TEXT, date TEXT)""")
-        db.executemany("INSERT INTO user_messages VALUES (?, ?, ?, ?, ?, ?, ?)",
-                       [(i, user_id, f"user{user_id}", "channel", i, text, date) for i, text, date in rows])
-    return path
 
 
 class FakeGateway:
@@ -89,7 +78,7 @@ def test_latest_clear_position_and_cached_repeated_analysis(tmp_path):
         (3, "tax:support", "2026-01-01"),
     ])
     gateway = FakeGateway()
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     asyncio.run(service.run())
     result = service.results(1)
     assert result.ranking[0].score == 100
@@ -109,7 +98,7 @@ def test_failed_run_resumes_without_repaying_completed_comments(tmp_path):
     create_source(tmp_path, 2, [(1, "issue1:support", "2026-01-01")])
     gateway = FakeGateway()
     gateway.fail_on = "issue9:support"
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     with pytest.raises(RuntimeError, match="temporary"):
         asyncio.run(service.run())
     failed = service.results(1)
@@ -130,7 +119,7 @@ def test_new_comments_invalidate_results_and_recompute_only_affected_positions(t
             (i, f"issue{i}:support", "2026-01-01") for i in range(1, 4)
         ])
     gateway = FakeGateway()
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     asyncio.run(service.run())
     compared = sum(call[0] == "compare" for call in gateway.calls)
     create_source(tmp_path, 1, [(4, "issue1:oppose", "2026-02-01")])
@@ -149,11 +138,11 @@ def test_changed_version_retains_old_result_without_mixing(tmp_path):
         create_source(tmp_path, user_id, [
             (i, f"issue{i}:support", "2026-01-01") for i in range(1, 4)
         ])
-    service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
     asyncio.run(service.run())
     gateway = FakeGateway()
     gateway.model = "test-model-v2"
-    changed = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    changed = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     result = changed.results(1)
     assert result.needs_update
     assert result.version == service.version
@@ -173,7 +162,7 @@ def test_semantically_close_but_different_questions_are_not_merged(tmp_path):
     from parser.position_analysis import PositionAnalysis
     create_source(tmp_path, 1, [(1, "warA:support", "2026-01-01")])
     create_source(tmp_path, 2, [(1, "warB:support", "2026-01-01")])
-    service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
     asyncio.run(service.run())
     result = service.results(1)
     assert result.ranking == []
@@ -191,7 +180,7 @@ def test_equivalent_question_names_keep_stable_groups_when_new_comments_arrive(t
     create_source(tmp_path, 1, [(1, "tax:support", "2026-01-01")])
     create_source(tmp_path, 2, [(1, "tax:support", "2026-01-01")])
     gateway = Gateway()
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     asyncio.run(service.run())
     create_source(tmp_path, 1, [(2, "a-tax:oppose", "2026-02-01")])
     asyncio.run(service.run())
@@ -208,7 +197,7 @@ def test_distinct_positions_at_same_instant_are_excluded(tmp_path):
         (1, "tax:support", "2026-01-01"), (2, "tax:oppose", "2026-01-01")
     ])
     create_source(tmp_path, 2, [(1, "tax:support", "2026-01-01")])
-    service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
     asyncio.run(service.run())
     assert service.results(1).insufficient[0].comparable_questions == 0
 
@@ -218,7 +207,7 @@ def test_empty_profiles_do_not_require_inference(tmp_path):
     create_source(tmp_path, 1, [])
     create_source(tmp_path, 2, [])
     gateway = FakeGateway()
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     asyncio.run(service.run())
     result = service.results(1)
     assert result.progress.state == "done"
@@ -240,7 +229,7 @@ def test_partial_and_unclear_relations_have_separate_counts(tmp_path):
             (i, f"issue{i}:{result}", "2026-01-01")
             for i, result in enumerate(["agreement", "partial", "disagreement", "unclear"], 1)
         ])
-    service = PositionAnalysis(tmp_path, Gateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), Gateway(), FakeEmbedder())
     asyncio.run(service.run())
     result = service.results(1).ranking[0]
     assert result.score == 50
@@ -262,7 +251,7 @@ def test_truncated_batches_are_split_and_successful_subbatches_checkpointed(tmp_
     create_source(tmp_path, 1, [
         (i, f"issue{i}:support", "2026-01-01") for i in range(1, 6)
     ])
-    service = PositionAnalysis(tmp_path, Gateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), Gateway(), FakeEmbedder())
     asyncio.run(service.run())
     assert service.results(1).progress.processed_comments == 5
     assert service.results(1).progress.state == "done"
@@ -275,7 +264,7 @@ def test_ranking_orders_by_score_coverage_and_id_and_keeps_only_ten(tmp_path):
         create_source(tmp_path, user_id, [
             (i, f"issue{i}:support", "2026-01-01") for i in range(1, count + 1)
         ])
-    service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
     asyncio.run(service.run())
     result = service.results(1)
     assert [pair.tg_id for pair in result.ranking] == [3, 2, 4, 5, 6, 7, 8, 9, 10, 11]
@@ -308,7 +297,7 @@ def test_invalid_single_comment_is_isolated_cached_and_counted(tmp_path, failure
         )
     ])
     gateway = Gateway()
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     asyncio.run(service.run())
     result = service.results(1)
     assert result.progress.state == "done"
@@ -329,7 +318,7 @@ def test_same_version_failed_update_keeps_last_complete_ranking(tmp_path):
     for user in (1, 2):
         create_source(tmp_path, user, [(i, f"issue{i}:support", "2026-01-01") for i in range(1, 4)])
     gateway = FakeGateway()
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     asyncio.run(service.run())
     previous = service.results(1).ranking
     create_source(tmp_path, 1, [(4, "issue1:oppose", "2026-02-01")])
@@ -347,7 +336,7 @@ def test_same_version_failed_update_keeps_last_complete_ranking(tmp_path):
 def test_cached_scan_and_question_groups_use_bulk_and_individual_records(tmp_path, monkeypatch):
     from parser.position_analysis import PositionAnalysis
     create_source(tmp_path, 1, [(i, f"issue{i}:support", "2026-01-01") for i in range(1, 20)])
-    service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
     original_get = service.store.get
 
     def get(namespace, key):
@@ -364,10 +353,10 @@ def test_cached_scan_and_question_groups_use_bulk_and_individual_records(tmp_pat
 
 def test_legacy_invalid_response_is_retried_without_invalidating_other_cached_texts(tmp_path):
     from parser.position_analysis import PositionAnalysis
-    from parser.position_store import digest
+    from db.analysis_store import digest
     create_source(tmp_path, 1, [(1, "hello", "2026-01-01"), (2, "unclear", "2026-01-01")])
     gateway = FakeGateway()
-    service = PositionAnalysis(tmp_path, gateway, FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), gateway, FakeEmbedder())
     service.store.put_many(service._namespace + ":comment", {
         digest("hello"): {"status": "ambiguous", "positions": [], "rejection_reason": "invalid_response"},
         digest("unclear"): {"status": "ambiguous", "positions": []},
@@ -380,14 +369,13 @@ def test_legacy_invalid_response_is_retried_without_invalidating_other_cached_te
 
 def test_embeddings_read_only_requested_keys(tmp_path, monkeypatch):
     from parser.position_analysis import PositionAnalysis
-    from parser.position_store import digest
+    from db.analysis_store import digest
     create_source(tmp_path, 1, [(1, "tax:support", "2026-01-01")])
-    service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
     namespace = "embeddings:" + service.embedder.version
     service.store.put(namespace, digest("tax"), [1., 0.])
-    # An unrelated old cache entry must never be parsed or loaded for this run.
-    with service.store.connect() as db:
-        db.execute("INSERT INTO cache VALUES (?, ?, ?)", (namespace, "unused", "broken JSON"))
+    # An unrelated old cache entry must never be loaded for this run.
+    service.store.put(namespace, "unused", [0., 1.])
     original_all = service.store.get_all
     original_many = service.store.get_many
     selected = []
@@ -407,28 +395,6 @@ def test_embeddings_read_only_requested_keys(tmp_path, monkeypatch):
     assert service.results(1).progress.state == "done"
 
 
-def test_get_many_chunks_keys_and_keeps_namespace_isolation(tmp_path, monkeypatch):
-    from contextlib import contextmanager
-    from parser.position_store import PositionStore
-    store = PositionStore(tmp_path)
-    values = {f"key{i}": [i] for i in range(1201)}
-    store.put_many("wanted", values)
-    store.put("other", "key0", [999])
-    queries = []
-    original_connect = store.connect
-
-    @contextmanager
-    def connect():
-        with original_connect() as db:
-            db.set_trace_callback(queries.append)
-            yield db
-
-    monkeypatch.setattr(store, "connect", connect)
-    assert store.get_many("wanted", [*values, "key0", "missing"]) == values
-    assert len([q for q in queries if q.startswith("SELECT")]) == 3
-    assert store.get_many("wanted", []) == {}
-
-
 def test_progress_records_all_stages_counts_embeddings_and_resume(tmp_path, monkeypatch):
     import json
     from parser.position_analysis import PositionAnalysis
@@ -439,7 +405,7 @@ def test_progress_records_all_stages_counts_embeddings_and_resume(tmp_path, monk
         dimensions = 2
         model_name = "test-embedding-model"
 
-    service = PositionAnalysis(tmp_path, FakeGateway(), Embedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), Embedder())
     snapshots = []
     original_report = service._report
 
@@ -460,7 +426,7 @@ def test_progress_records_all_stages_counts_embeddings_and_resume(tmp_path, monk
     assert result.progress.updated_at
     assert result.embeddings.saved_vectors == 3
     assert result.embeddings.dimensions == 2
-    assert result.embeddings.storage.endswith("position-analysis.sqlite3")
+    assert result.embeddings.storage == "memory"
     assert any(p["phase"] == "embeddings" and p["processed_embeddings"] == 0 for p in snapshots)
     assert any(p["phase"] == "embeddings" and p["processed_embeddings"] == 3 for p in snapshots)
     asyncio.run(service.run())
@@ -481,7 +447,7 @@ def test_progress_records_safe_rejection_reason_and_split_count(tmp_path, caplog
             return values
 
     create_source(tmp_path, 1, [(1, "private-secret:support", "2026-01-01"), (2, "hello", "2026-01-01")])
-    service = PositionAnalysis(tmp_path, Gateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), Gateway(), FakeEmbedder())
     asyncio.run(service.run())
     progress = service.results(1).progress
     assert progress.rejection_reasons == {"quote_mismatch": 1}

@@ -37,7 +37,7 @@ function Statement({ value, label }: { value: Evidence | null; label: string }) 
 function SimilarPair({ value }: { value: SimilarAuthor }) {
   return <div className="space-y-3 rounded-md border p-4">
     <div className="flex flex-wrap justify-between gap-2">
-      <Link className="font-medium text-primary hover:underline" to={`/users/${encodeURIComponent(value.db_name)}`}>{value.display_username}</Link>
+      <Link className="font-medium text-primary hover:underline" to={`/users/${value.tg_id}`}>{value.display_username}</Link>
       <span className="tabular-nums">Косинусное сходство: {value.similarity.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</span>
     </div>
     <p className="text-sm text-muted-foreground">Уникальных комментариев: {value.left_comments} у выбранного автора, {value.right_comments} у сравниваемого.</p>
@@ -59,7 +59,7 @@ function Pair({ value }: { value: Comparison }) {
   return (
     <div className="space-y-3 rounded-md border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link className="font-medium text-primary hover:underline" to={`/users/${encodeURIComponent(value.db_name)}`}>
+        <Link className="font-medium text-primary hover:underline" to={`/users/${value.tg_id}`}>
           {value.display_username}
         </Link>
         <span className="font-semibold tabular-nums">
@@ -93,10 +93,10 @@ function Pair({ value }: { value: Comparison }) {
   );
 }
 
-export function PositionComparisons({ dbName, hasComments = true }: { dbName: string; hasComments?: boolean }) {
+export function PositionComparisons({ tgId, hasComments = true }: { tgId: number; hasComments?: boolean }) {
   const results = useQuery({
-    queryKey: ["position-comparisons", dbName],
-    queryFn: () => unwrap(getPositionComparisons({ path: { db_name: dbName } })),
+    queryKey: ["position-comparisons", tgId],
+    queryFn: () => unwrap(getPositionComparisons({ path: { tg_id: tgId } })),
     refetchInterval: (query) => query.state.data?.progress.state === "running" ? 2000 : false,
     retry: 2
   });
@@ -105,7 +105,7 @@ export function PositionComparisons({ dbName, hasComments = true }: { dbName: st
     onSuccess: () => { void results.refetch(); }
   });
   const reset = start.reset;
-  useEffect(() => reset(), [dbName, reset]);
+  useEffect(() => reset(), [tgId, reset]);
   const value = results.data;
   const local = value?.method === "text_similarity";
   const running = start.isPending || value?.progress.state === "running";

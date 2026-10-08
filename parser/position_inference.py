@@ -12,7 +12,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from parser.position_comparison import Evidence
-from parser.position_store import digest
+from db.analysis_store import digest
 from parser.llm_config import CHAT_COMPLETIONS_URL, openrouter_model, openrouter_options
 
 

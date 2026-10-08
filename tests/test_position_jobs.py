@@ -3,7 +3,8 @@ import asyncio
 import pytest
 
 from parser.position_analysis import PositionAnalysis
-from test_position_comparison import FakeEmbedder, FakeGateway, create_source
+from position_fakes import create_source, store_for
+from test_position_comparison import FakeEmbedder, FakeGateway
 from web.position_jobs import PositionJobs
 
 
@@ -20,7 +21,7 @@ def test_single_job_guard_and_shutdown_preserve_resumable_state(tmp_path):
                 await release.wait()
                 return await super().extract(texts)
 
-        service = PositionAnalysis(tmp_path, Gateway(), FakeEmbedder())
+        service = PositionAnalysis(store_for(tmp_path), Gateway(), FakeEmbedder())
         jobs = PositionJobs(service)
         assert jobs.start().state == "running"
         await entered.wait()
@@ -28,7 +29,7 @@ def test_single_job_guard_and_shutdown_preserve_resumable_state(tmp_path):
             jobs.start()
         # A separate registry shares the filesystem guard.
         with pytest.raises(RuntimeError, match="уже"):
-            PositionJobs(PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())).start()
+            PositionJobs(PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())).start()
         await jobs.close()
         assert service.results(1).progress.state == "interrupted"
         release.set()
@@ -41,9 +42,9 @@ def test_single_job_guard_and_shutdown_preserve_resumable_state(tmp_path):
 
 def test_start_owns_lock_before_task_runs_and_immediate_cancel_releases_it(tmp_path):
     async def scenario():
-        service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+        service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
         jobs = PositionJobs(service)
-        other = PositionJobs(PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder()))
+        other = PositionJobs(PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder()))
         jobs.start()
         assert service.results(1).progress.state == "running"
         # No yield yet: both POSTs can arrive before the first background coroutine starts.
@@ -59,7 +60,7 @@ def test_start_owns_lock_before_task_runs_and_immediate_cancel_releases_it(tmp_p
 
 def test_cancelled_store_write_keeps_lock_until_writer_finishes(tmp_path, monkeypatch):
     import threading
-    service = PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())
+    service = PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())
     entered, release = threading.Event(), threading.Event()
     original = service.store.put
 
@@ -81,7 +82,7 @@ def test_cancelled_store_write_keeps_lock_until_writer_finishes(tmp_path, monkey
             await asyncio.sleep(0.05)
             assert not jobs.task.done()
             with pytest.raises(RuntimeError, match="уже"):
-                PositionJobs(PositionAnalysis(tmp_path, FakeGateway(), FakeEmbedder())).start()
+                PositionJobs(PositionAnalysis(store_for(tmp_path), FakeGateway(), FakeEmbedder())).start()
         finally:
             release.set()
             await jobs.close()

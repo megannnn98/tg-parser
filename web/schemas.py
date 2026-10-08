@@ -34,7 +34,6 @@ class ChannelShare(BaseModel):
 
 
 class Profile(BaseModel):
-    db_name: str
     tg_id: int
     username: str | None
     display_name: str | None
@@ -46,7 +45,6 @@ class Profile(BaseModel):
     @classmethod
     def of(cls, profile: UserProfile) -> Profile:
         return cls(
-            db_name=profile.db_name,
             tg_id=profile.tg_id,
             username=profile.username,
             display_name=profile.display_name,
@@ -133,7 +131,7 @@ class JobStatus(BaseModel):
     resolved: ResolvedUser | None
     channels: list[ChannelStatus]
     saved_total: int
-    db_name: str | None
+    tg_id: int | None
     error: str | None
 
 

@@ -1,13 +1,11 @@
 import asyncio
 
-import httpx
 import numpy as np
 import pytest
 
 from parser.local_text_analysis import LocalTextAnalysis
 from parser.position_inference import DeepSeekPositions
-from test_position_comparison import create_source
-from web.app import create_app
+from position_fakes import create_source, store_for
 
 
 class Embedder:
@@ -35,7 +33,7 @@ def test_local_vectors_rank_authors_and_cache_without_openrouter(tmp_path, monke
     create_source(tmp_path, 2, [(1, "alpha", "2026-01-01"), (2, "beta", "2026-01-02")])
     create_source(tmp_path, 3, [(1, "opposite", "2026-01-01")])
     embedder = Embedder()
-    service = LocalTextAnalysis(tmp_path, embedder)
+    service = LocalTextAnalysis(store_for(tmp_path), embedder)
     asyncio.run(service.run())
     result = service.results(1)
     assert result.method == "text_similarity"
@@ -58,7 +56,7 @@ def test_local_failure_resumes_from_saved_vector_batches(tmp_path):
     create_source(tmp_path, 1, [(i, f"text{i}", "2026-01-01") for i in range(1, 18)])
     embedder = Embedder()
     embedder.fail = True
-    service = LocalTextAnalysis(tmp_path, embedder)
+    service = LocalTextAnalysis(store_for(tmp_path), embedder)
     with pytest.raises(RuntimeError, match="local model failure"):
         asyncio.run(service.run())
     assert service.results(1).progress.state == "error"
@@ -72,7 +70,7 @@ def test_local_failure_resumes_from_saved_vector_batches(tmp_path):
 def test_missing_numpy_explains_how_to_rebuild_instead_of_breaking_web(tmp_path, monkeypatch):
     import builtins
     create_source(tmp_path, 1, [(1, "alpha", "2026-01-01")])
-    service = LocalTextAnalysis(tmp_path, Embedder())
+    service = LocalTextAnalysis(store_for(tmp_path), Embedder())
     original = builtins.__import__
 
     def without_numpy(name, *args, **kwargs):
@@ -93,7 +91,7 @@ def test_failed_local_update_keeps_published_similarity(tmp_path):
     for user in (1, 2):
         create_source(tmp_path, user, [(1, "alpha", "2026-01-01")])
     embedder = Embedder()
-    service = LocalTextAnalysis(tmp_path, embedder)
+    service = LocalTextAnalysis(store_for(tmp_path), embedder)
     asyncio.run(service.run())
     old = service.results(1).similar_authors
     create_source(tmp_path, 1, [(2, "beta", "2026-01-02")])
@@ -109,7 +107,7 @@ def test_failed_local_update_keeps_published_similarity(tmp_path):
 def test_reverse_examples_and_old_llm_cache_are_not_mixed(tmp_path):
     create_source(tmp_path, 1, [(1, "alpha", "2026-01-01")])
     create_source(tmp_path, 2, [(1, "paraphrase", "2026-01-02")])
-    service = LocalTextAnalysis(tmp_path, Embedder())
+    service = LocalTextAnalysis(store_for(tmp_path), Embedder())
     service.store.put("published", "latest", {"version": "legacy", "progress": {"state": "done"}})
     assert not service.results(1).similar_authors
     assert service.results(1).progress.state == "idle"
@@ -126,48 +124,10 @@ def test_invalid_local_embeddings_are_not_cached(tmp_path, values):
         async def encode(self, texts):
             return values
     create_source(tmp_path, 1, [(1, "alpha", "2026-01-01")])
-    service = LocalTextAnalysis(tmp_path, Invalid())
+    service = LocalTextAnalysis(store_for(tmp_path), Invalid())
     with pytest.raises(ValueError):
         asyncio.run(service.run())
     assert service.results(1).embeddings.saved_vectors == 0
-
-
-def test_local_default_api_uses_no_gateway_and_reports_real_embedding_progress(tmp_path, monkeypatch):
-    import parser.local_text_analysis as module
-    create_source(tmp_path, 1, [(1, "alpha", "2026-01-01")])
-    entered, release = None, None
-
-    class Waiting(Embedder):
-        def __init__(self, **kwargs):
-            super().__init__()
-        async def encode(self, texts):
-            entered.set()
-            await release.wait()
-            return await super().encode(texts)
-
-    monkeypatch.setattr(module, "LocalCommentE5", Waiting)
-    # Fake embedders need not expose the real model's preparation field.
-    Waiting._model = object()
-    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    app = create_app(data_dir=tmp_path, channels=[])
-    assert isinstance(app.state.position_jobs.service, LocalTextAnalysis)
-
-    async def scenario():
-        nonlocal entered, release
-        entered, release = asyncio.Event(), asyncio.Event()
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-            assert (await client.post("/api/v1/position-analysis")).status_code == 202
-            await asyncio.wait_for(entered.wait(), 5)
-            result = (await client.get("/api/v1/users/user_1.db/position-comparisons")).json()
-            assert result["method"] == "text_similarity"
-            assert result["progress"]["phase"] == "embeddings"
-            assert result["progress"]["total_embeddings"] == 1
-            assert result["progress"]["extraction_requests"] == 0
-            release.set()
-            await app.state.position_jobs.task
-        await app.state.position_jobs.close()
-
-    asyncio.run(scenario())
 
 
 def test_long_comments_include_tail_and_produce_normalized_vectors(tmp_path):

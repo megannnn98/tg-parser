@@ -1,5 +1,6 @@
 import asyncio
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from pyrogram import Client, enums
@@ -18,7 +19,7 @@ class CollectedMessage:
     tg_id: int
     username: str | None
     message_id: int
-    date: str
+    date: datetime
     text: str
 
 
@@ -46,8 +47,14 @@ class TelegramUser:
 @dataclass(frozen=True)
 class UserComment:
     message_id: int
-    date: str
+    date: datetime
     text: str
+
+
+def _utc(date: datetime) -> datetime:
+    # Pyrogram gives a naive datetime in the local time of this process;
+    # astimezone() reads it that way, so the instant survives any TZ setting.
+    return date.astimezone(timezone.utc)
 
 
 def get_client():
@@ -86,7 +93,7 @@ async def fetch_messages(tg_client, channel_linked_chat_id):
             tg_id=msg.from_user.id,
             username=msg.from_user.username,
             message_id=msg.id,
-            date=str(msg.date),
+            date=_utc(msg.date),
             text=msg.text,
         )
 
@@ -199,6 +206,6 @@ async def fetch_user_messages(tg_client, chat_id, tg_id: int):
 
         yield UserComment(
             message_id=msg.id,
-            date=str(msg.date),
+            date=_utc(msg.date),
             text=msg.text,
         )

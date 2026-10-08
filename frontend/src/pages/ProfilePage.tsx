@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCollectJob } from "@/hooks/useCollectJob";
 import { unwrap } from "@/lib/api";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 
 /** What the collector is asked for on a refresh: the username, or the id without one. */
 function userRef(profile: Profile): string {
@@ -20,21 +21,23 @@ function userRef(profile: Profile): string {
 }
 
 export function ProfilePage() {
-  const { dbName = "" } = useParams();
+  // The Telegram id: stable, unlike a username.
+  const tgId = Number(useParams().tgId);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const user = useQuery({
-    queryKey: ["user", dbName],
-    queryFn: () => unwrap(getUser({ path: { db_name: dbName } }))
+    queryKey: ["user", tgId],
+    queryFn: () => unwrap(getUser({ path: { tg_id: tgId } })),
+    enabled: Number.isInteger(tgId)
   });
 
   const political = useMutation({
-    mutationFn: () => unwrap(analyzePolitical({ path: { db_name: dbName } }))
+    mutationFn: () => unwrap(analyzePolitical({ path: { tg_id: tgId } }))
   });
   const resetPolitical = political.reset;
   // The result is of the comments it was made from: another user's page drops it.
-  useEffect(() => resetPolitical(), [dbName, resetPolitical]);
+  useEffect(() => resetPolitical(), [tgId, resetPolitical]);
 
   const collect = useCollectJob((job) => {
     // New comments make the political result stale; the page stays mounted.
@@ -42,8 +45,11 @@ export function ProfilePage() {
     void queryClient.invalidateQueries({ queryKey: ["user"] });
     void queryClient.invalidateQueries({ queryKey: ["profiles"] });
     void queryClient.invalidateQueries({ queryKey: ["position-comparisons"] });
-    navigate(`/users/${encodeURIComponent(job.db_name!)}`);
+    navigate(`/users/${job.tg_id!}`);
   });
+
+  // An old /users/<file>.db link, or anything else that is not an id.
+  if (!Number.isInteger(tgId)) return <NotFoundPage />;
 
   return (
     <QueryState query={user}>
@@ -55,7 +61,7 @@ export function ProfilePage() {
             </Link>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" asChild>
-                <a href={`/api/v1/users/${encodeURIComponent(dbName)}/comments.txt`}>Скачать .txt</a>
+                <a href={`/api/v1/users/${tgId}/comments.txt`}>Скачать .txt</a>
               </Button>
               <Button variant="outline" onClick={() => political.mutate()} disabled={political.isPending || profile.total_messages === 0}>
                 {political.isPending ? "Анализирую…" : "Определить полит взгляды"}
@@ -116,7 +122,7 @@ export function ProfilePage() {
             <p className="text-sm text-muted-foreground">Комментарии в выбранных каналах не найдены.</p>
           ) : null}
 
-          <PositionComparisons dbName={dbName} hasComments={profile.total_messages > 0} />
+          <PositionComparisons tgId={tgId} hasComments={profile.total_messages > 0} />
 
           <Card>
             <CardContent>
@@ -135,7 +141,7 @@ export function ProfilePage() {
               </div>
               <div className="min-w-0 space-y-2">
                 <h3 className="font-medium">По дням</h3>
-                <DailyChart key={dbName} days={daily_activity} />
+                <DailyChart key={tgId} days={daily_activity} />
               </div>
               <div className="min-w-0 space-y-2">
                 <h3 className="font-medium">По дням недели и часам</h3>

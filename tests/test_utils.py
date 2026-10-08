@@ -5,7 +5,7 @@ from parser.utils import (
     normalize,
     parse_args,
     parse_user_ref,
-    user_db_filename,
+    user_export_filename,
 )
 
 import pytest
@@ -51,45 +51,45 @@ def test_parse_user_ref_rejects_empty(raw: str):
 @pytest.mark.parametrize(
     ("tg_id", "username", "expected"),
     [
-        (12345678, "vasya", "vasya_12345678.db"),
-        (12345678, "Vasya_Pupkin", "vasya_pupkin_12345678.db"),
-        (12345678, None, "12345678.db"),
-        (12345678, "", "12345678.db"),
-        (12345678, "../../etc/passwd", "etcpasswd_12345678.db"),
-        (12345678, "!!!", "12345678.db"),
+        (12345678, "vasya", "vasya_12345678.txt"),
+        (12345678, "Vasya_Pupkin", "vasya_pupkin_12345678.txt"),
+        (12345678, None, "12345678.txt"),
+        (12345678, "", "12345678.txt"),
+        (12345678, "../../etc/passwd", "etcpasswd_12345678.txt"),
+        (12345678, "!!!", "12345678.txt"),
     ],
 )
-def test_user_db_filename(tg_id: int, username: str | None, expected: str):
-    assert user_db_filename(tg_id, username) == expected
+def test_user_export_filename(tg_id: int, username: str | None, expected: str):
+    assert user_export_filename(tg_id, username) == expected
 
 
 @pytest.mark.parametrize(
     ("username", "first_name", "last_name", "expected"),
     [
         # no username: the display name carries the file name
-        (None, "Хрюкало", "Офф", "хрюкало_офф_555.db"),
-        (None, "Хрюкало", None, "хрюкало_555.db"),
-        (None, None, "Офф", "офф_555.db"),
+        (None, "Хрюкало", "Офф", "хрюкало_офф_555.txt"),
+        (None, "Хрюкало", None, "хрюкало_555.txt"),
+        (None, None, "Офф", "офф_555.txt"),
         # username wins over the display name
-        ("hryukalo", "Хрюкало", "Офф", "hryukalo_555.db"),
+        ("hryukalo", "Хрюкало", "Офф", "hryukalo_555.txt"),
         # nothing usable left
-        (None, None, None, "555.db"),
-        (None, "", "", "555.db"),
-        (None, "🐷", None, "555.db"),
+        (None, None, None, "555.txt"),
+        (None, "", "", "555.txt"),
+        (None, "🐷", None, "555.txt"),
         # emoji, punctuation and odd spacing must not leak into the path
-        (None, "🐷 Хрюкало", "Офф!", "хрюкало_офф_555.db"),
-        (None, "Хрюкало Офф", None, "хрюкало_офф_555.db"),
-        (None, "  Хрюкало   Офф  ", None, "хрюкало_офф_555.db"),
-        (None, "../../etc", "passwd", "etc_passwd_555.db"),
+        (None, "🐷 Хрюкало", "Офф!", "хрюкало_офф_555.txt"),
+        (None, "Хрюкало Офф", None, "хрюкало_офф_555.txt"),
+        (None, "  Хрюкало   Офф  ", None, "хрюкало_офф_555.txt"),
+        (None, "../../etc", "passwd", "etc_passwd_555.txt"),
     ],
 )
-def test_user_db_filename_falls_back_to_display_name(
+def test_user_export_filename_falls_back_to_display_name(
     username: str | None,
     first_name: str | None,
     last_name: str | None,
     expected: str,
 ):
-    assert user_db_filename(555, username, first_name, last_name) == expected
+    assert user_export_filename(555, username, first_name, last_name) == expected
 
 
 @pytest.mark.parametrize(

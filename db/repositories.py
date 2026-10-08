@@ -15,17 +15,6 @@ _BATCH_ROWS = 2000
 
 
 @dataclass(frozen=True)
-class UserSummary:
-    id: int
-    tg_id: int
-    username: str | None
-    first_name: str | None
-    last_name: str | None
-    total_messages: int
-    channel_count: int
-
-
-@dataclass(frozen=True)
 class StoredComment:
     channel: str
     tg_message_id: int
@@ -101,28 +90,49 @@ async def upsert_channel(
     return (await session.execute(stmt)).scalar_one()
 
 
-async def insert_messages(session: AsyncSession, rows: list[dict]) -> int:
+async def insert_messages(
+    session: AsyncSession, rows: list[dict], refresh_text: bool = False
+) -> int:
     """Inserts rows of tg_message_id, user_id, channel_id, text, date.
 
-    A comment already stored is left as it is. Returns the number of new rows.
+    A comment already stored is left as it is, unless `refresh_text` asks to
+    take its text from Telegram again. Returns the number of new rows.
     """
+    key = [Message.channel_id, Message.tg_message_id]
+    # Sorted, so concurrent batches lock rows in one order and cannot deadlock.
     rows = sorted(rows, key=lambda row: (row["channel_id"], row["tg_message_id"]))
     inserted = 0
     for start in range(0, len(rows), _BATCH_ROWS):
-        stmt = (
-            insert(Message)
-            .values(rows[start : start + _BATCH_ROWS])
-            .on_conflict_do_nothing(
-                index_elements=[Message.channel_id, Message.tg_message_id]
+        stmt = insert(Message).values(rows[start : start + _BATCH_ROWS])
+        if refresh_text:
+            stmt = stmt.on_conflict_do_update(
+                index_elements=key,
+                set_={"text": stmt.excluded.text},
+                where=Message.text.is_distinct_from(stmt.excluded.text),
+                # xmax is 0 only for a row this statement created.
+            ).returning(literal_column("xmax = 0"))
+            inserted += sum(is_new for (is_new,) in await session.execute(stmt))
+        else:
+            stmt = stmt.on_conflict_do_nothing(index_elements=key).returning(
+                Message.id
             )
-            .returning(Message.id)
-        )
-        inserted += len((await session.execute(stmt)).all())
+            inserted += len((await session.execute(stmt)).all())
     return inserted
 
 
 async def get_user_by_tg_id(session: AsyncSession, tg_id: int) -> User | None:
     return await session.scalar(select(User).where(User.tg_id == tg_id))
+
+
+async def find_profile(session: AsyncSession, user_ref: int | str) -> User | None:
+    """A user whose comments were collected before, by tg_id or by username."""
+    stmt = select(User).where(User.profile_collected_at.is_not(None))
+    if isinstance(user_ref, int):
+        stmt = stmt.where(User.tg_id == user_ref)
+    else:
+        stmt = stmt.where(func.lower(User.username) == user_ref.lower())
+    # Two users may have held one username at different times.
+    return await session.scalar(stmt.order_by(User.updated_at.desc()).limit(1))
 
 
 async def mark_profiles_collected(
@@ -136,24 +146,29 @@ async def mark_profiles_collected(
         await session.execute(stmt.values(profile_collected_at=when))
 
 
-async def list_profile_summaries(session: AsyncSession) -> list[UserSummary]:
+async def list_profile_users(session: AsyncSession) -> list[User]:
     """Users whose comments were collected, including those with none found."""
+    stmt = select(User).where(User.profile_collected_at.is_not(None))
+    return list(await session.scalars(stmt.order_by(User.tg_id)))
+
+
+async def channel_counts_of_profiles(
+    session: AsyncSession,
+) -> dict[int, list[tuple[str, int]]]:
+    """{users.id: [(channel, messages)]} for collected users, largest channel first."""
+    count = func.count(Message.id)
     stmt = (
-        select(
-            User.id,
-            User.tg_id,
-            User.username,
-            User.first_name,
-            User.last_name,
-            func.count(Message.id),
-            func.count(Message.channel_id.distinct()),
-        )
-        .outerjoin(Message, Message.user_id == User.id)
+        select(Message.user_id, Channel.username, count)
+        .join(Channel, Channel.id == Message.channel_id)
+        .join(User, User.id == Message.user_id)
         .where(User.profile_collected_at.is_not(None))
-        .group_by(User.id)
-        .order_by(User.tg_id)
+        .group_by(Message.user_id, Channel.username)
+        .order_by(Message.user_id, count.desc(), Channel.username)
     )
-    return [UserSummary(*row) for row in await session.execute(stmt)]
+    result: dict[int, list[tuple[str, int]]] = {}
+    for user_id, channel, messages in await session.execute(stmt):
+        result.setdefault(user_id, []).append((channel, messages))
+    return result
 
 
 async def channel_counts(session: AsyncSession, user_id: int) -> list[tuple[str, int]]:

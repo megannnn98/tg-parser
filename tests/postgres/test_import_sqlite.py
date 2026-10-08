@@ -243,7 +243,7 @@ def test_only_users_with_a_file_become_profiles(run_db, tmp_path):
         await import_sqlite(tmp_path, sessions, "UTC")
         async with sessions() as session:
             first = (await repo.get_user_by_tg_id(session, 1)).profile_collected_at
-            profiles = await repo.list_profile_summaries(session)
+            profiles = await repo.list_profile_users(session)
         async with sessions.begin() as session:
             later = datetime(2026, 4, 1, tzinfo=timezone.utc)
             await repo.mark_profiles_collected(session, {profiles[0].id: later})

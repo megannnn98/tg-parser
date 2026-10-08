@@ -65,22 +65,22 @@ export const cancelCollect = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Get User
  */
-export const getUser = <ThrowOnError extends boolean = false>(options: Options<GetUserData, ThrowOnError>) => (options.client ?? client).get<GetUserResponses, GetUserErrors, ThrowOnError>({ url: '/api/v1/users/{db_name}', ...options });
+export const getUser = <ThrowOnError extends boolean = false>(options: Options<GetUserData, ThrowOnError>) => (options.client ?? client).get<GetUserResponses, GetUserErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}', ...options });
 
 /**
  * Export User Comments
  */
-export const exportUserComments = <ThrowOnError extends boolean = false>(options: Options<ExportUserCommentsData, ThrowOnError>) => (options.client ?? client).get<ExportUserCommentsResponses, ExportUserCommentsErrors, ThrowOnError>({ url: '/api/v1/users/{db_name}/comments.txt', ...options });
+export const exportUserComments = <ThrowOnError extends boolean = false>(options: Options<ExportUserCommentsData, ThrowOnError>) => (options.client ?? client).get<ExportUserCommentsResponses, ExportUserCommentsErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/comments.txt', ...options });
 
 /**
  * Analyze Political
  */
-export const analyzePolitical = <ThrowOnError extends boolean = false>(options: Options<AnalyzePoliticalData, ThrowOnError>) => (options.client ?? client).post<AnalyzePoliticalResponses, AnalyzePoliticalErrors, ThrowOnError>({ url: '/api/v1/users/{db_name}/political-coords', ...options });
+export const analyzePolitical = <ThrowOnError extends boolean = false>(options: Options<AnalyzePoliticalData, ThrowOnError>) => (options.client ?? client).post<AnalyzePoliticalResponses, AnalyzePoliticalErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/political-coords', ...options });
 
 /**
  * Get Position Comparisons
  */
-export const getPositionComparisons = <ThrowOnError extends boolean = false>(options: Options<GetPositionComparisonsData, ThrowOnError>) => (options.client ?? client).get<GetPositionComparisonsResponses, GetPositionComparisonsErrors, ThrowOnError>({ url: '/api/v1/users/{db_name}/position-comparisons', ...options });
+export const getPositionComparisons = <ThrowOnError extends boolean = false>(options: Options<GetPositionComparisonsData, ThrowOnError>) => (options.client ?? client).get<GetPositionComparisonsResponses, GetPositionComparisonsErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/position-comparisons', ...options });
 
 /**
  * Start Position Analysis

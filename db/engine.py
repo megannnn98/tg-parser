@@ -29,3 +29,23 @@ def create_engine(url: str | None = None, **kwargs) -> AsyncEngine:
 
 def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+class Database:
+    """Creates the engine on first use, so an application starts without it."""
+
+    def __init__(self, url: str | None = None, **engine_kwargs):
+        self._url = url
+        self._engine_kwargs = engine_kwargs
+        self._engine: AsyncEngine | None = None
+
+    @property
+    def sessions(self) -> async_sessionmaker[AsyncSession]:
+        if self._engine is None:
+            self._engine = create_engine(self._url, **self._engine_kwargs)
+        return session_factory(self._engine)
+
+    async def close(self) -> None:
+        if self._engine is not None:
+            await self._engine.dispose()
+            self._engine = None

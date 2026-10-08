@@ -5,14 +5,12 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import httpx
 
 from parser.logger import get_logger
 from parser.llm_config import CHAT_COMPLETIONS_URL, openrouter_model, openrouter_options
-from parser.user_profile import UserComment, fetch_user_comments
 
 _logger = get_logger("political_coords")
 
@@ -112,8 +110,7 @@ SYSTEM_PROMPT = """Ты — анализатор политических коо
 
 
 async def analyze_political_coords(
-    db_path: Path,
-    tg_id: int,
+    comments: list[str],
     api_key: str | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> AggregatedCoords:
@@ -121,7 +118,6 @@ async def analyze_political_coords(
     if not api_key:
         raise PoliticalCoordsError("OPENROUTER_API_KEY is not set")
 
-    comments = fetch_user_comments(db_path, tg_id)
     messages = _filter_messages(comments)
     total_comments = len(comments)
 
@@ -158,8 +154,8 @@ class PoliticalCoordsError(RuntimeError):
     pass
 
 
-def _filter_messages(comments: list[UserComment], min_length: int = _MIN_MESSAGE_LENGTH) -> list[str]:
-    return [c.text for c in comments if len(c.text) >= min_length]
+def _filter_messages(comments: list[str], min_length: int = _MIN_MESSAGE_LENGTH) -> list[str]:
+    return [text for text in comments if len(text) >= min_length]
 
 
 def _split_batches(messages: list[str], batch_size: int) -> list[list[str]]:

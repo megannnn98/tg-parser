@@ -30,7 +30,6 @@ class QuestionMatch(ResponseValue):
 
 class Comparison(ResponseValue):
     tg_id: int
-    db_name: str
     display_username: str
     score: float | None = None
     comparable_questions: int = 0
@@ -97,7 +96,6 @@ class TextMatch(ResponseValue):
 
 class SimilarAuthor(ResponseValue):
     tg_id: int
-    db_name: str
     display_username: str
     similarity: float
     left_comments: int

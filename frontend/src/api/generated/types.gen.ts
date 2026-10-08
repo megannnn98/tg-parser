@@ -201,10 +201,6 @@ export type Comparison = {
      */
     tg_id: number;
     /**
-     * Db Name
-     */
-    db_name: string;
-    /**
      * Display Username
      */
     display_username: string;
@@ -390,9 +386,9 @@ export type JobStatus = {
      */
     saved_total: number;
     /**
-     * Db Name
+     * Tg Id
      */
-    db_name: string | null;
+    tg_id: number | null;
     /**
      * Error
      */
@@ -467,10 +463,6 @@ export type PositionResults = {
  * Profile
  */
 export type Profile = {
-    /**
-     * Db Name
-     */
-    db_name: string;
     /**
      * Tg Id
      */
@@ -547,10 +539,6 @@ export type SimilarAuthor = {
      * Tg Id
      */
     tg_id: number;
-    /**
-     * Db Name
-     */
-    db_name: string;
     /**
      * Display Username
      */
@@ -788,12 +776,12 @@ export type GetUserData = {
     body?: never;
     path: {
         /**
-         * Db Name
+         * Tg Id
          */
-        db_name: string;
+        tg_id: number;
     };
     query?: never;
-    url: '/api/v1/users/{db_name}';
+    url: '/api/v1/users/{tg_id}';
 };
 
 export type GetUserErrors = {
@@ -818,12 +806,12 @@ export type ExportUserCommentsData = {
     body?: never;
     path: {
         /**
-         * Db Name
+         * Tg Id
          */
-        db_name: string;
+        tg_id: number;
     };
     query?: never;
-    url: '/api/v1/users/{db_name}/comments.txt';
+    url: '/api/v1/users/{tg_id}/comments.txt';
 };
 
 export type ExportUserCommentsErrors = {
@@ -848,12 +836,12 @@ export type AnalyzePoliticalData = {
     body?: never;
     path: {
         /**
-         * Db Name
+         * Tg Id
          */
-        db_name: string;
+        tg_id: number;
     };
     query?: never;
-    url: '/api/v1/users/{db_name}/political-coords';
+    url: '/api/v1/users/{tg_id}/political-coords';
 };
 
 export type AnalyzePoliticalErrors = {
@@ -878,12 +866,12 @@ export type GetPositionComparisonsData = {
     body?: never;
     path: {
         /**
-         * Db Name
+         * Tg Id
          */
-        db_name: string;
+        tg_id: number;
     };
     query?: never;
-    url: '/api/v1/users/{db_name}/position-comparisons';
+    url: '/api/v1/users/{tg_id}/position-comparisons';
 };
 
 export type GetPositionComparisonsErrors = {

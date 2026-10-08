@@ -16,5 +16,7 @@ DB_PATH = os.getenv("DB_PATH", os.path.join(DATA_DIR, "app.db"))
 # Set: that exact file is used instead.
 USER_DB_PATH = os.getenv("USER_DB_PATH")
 LIMIT = int(os.getenv("LIMIT", 1000))
+# Time zone of the activity charts: the hour and the day a comment was written in.
+APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Almaty")
 # discover-channels stops resolving candidates once the list reaches this size.
 DISCOVER_TARGET = int(os.getenv("DISCOVER_TARGET", 200))

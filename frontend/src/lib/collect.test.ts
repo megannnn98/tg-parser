@@ -12,7 +12,7 @@ function job(overrides: Partial<JobStatus> = {}): JobStatus {
     resolved: null,
     channels: [],
     saved_total: 0,
-    db_name: null,
+    tg_id: null,
     error: null,
     ...overrides
   };

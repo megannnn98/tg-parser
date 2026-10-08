@@ -10,10 +10,12 @@ from sqlalchemy import (
     Identity,
     Index,
     MetaData,
+    PrimaryKeyConstraint,
     Text,
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Stable constraint names, so migrations can refer to them.
@@ -108,3 +110,17 @@ class LegacyMessage(Base):
     text: Mapped[str | None] = mapped_column(Text)
     # As stored by SQLite: a naive string in the collecting process's local time.
     date_raw: Mapped[str | None] = mapped_column(Text)
+
+
+class AnalysisCache(Base):
+    """Checkpoints and cached inference of the position analysis.
+
+    Derived data, kept apart from the comments: it can be dropped and recomputed.
+    """
+
+    __tablename__ = "analysis_cache"
+    __table_args__ = (PrimaryKeyConstraint("namespace", "key"),)
+
+    namespace: Mapped[str] = mapped_column(Text)
+    key: Mapped[str] = mapped_column(Text)
+    value: Mapped[object] = mapped_column(JSONB)

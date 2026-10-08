@@ -234,18 +234,19 @@ def test_channel_statistics(run_db):
             )
         async with sessions() as session:
             return (
+                user_id,
+                other_user,
                 await repo.channel_counts(session, user_id),
-                await repo.list_profile_summaries(session),
+                await repo.list_profile_users(session),
+                await repo.channel_counts_of_profiles(session),
             )
 
-    counts, summaries = run_db(scenario)
+    user_id, other_user, counts, profiles, by_profile = run_db(scenario)
 
     # Largest first, ties by name.
     assert counts == [("news", 2), ("alpha", 1), ("beta", 1)]
-    assert [(s.tg_id, s.total_messages, s.channel_count) for s in summaries] == [
-        (1, 4, 3),
-        (2, 1, 1),
-    ]
+    assert [user.tg_id for user in profiles] == [1, 2]
+    assert by_profile == {user_id: counts, other_user: [("news", 1)]}
 
 
 def test_collected_user_without_messages_is_listed(run_db):
@@ -254,12 +255,15 @@ def test_collected_user_without_messages_is_listed(run_db):
             user_id = await repo.upsert_user(session, 5, None, "No", "Comments")
             await repo.mark_profiles_collected(session, {user_id: _utc(2026, 2, 1)})
         async with sessions() as session:
-            return await repo.list_profile_summaries(session)
+            return (
+                await repo.list_profile_users(session),
+                await repo.channel_counts_of_profiles(session),
+            )
 
-    (summary,) = run_db(scenario)
+    (user,), counts = run_db(scenario)
 
-    assert (summary.tg_id, summary.total_messages, summary.channel_count) == (5, 0, 0)
-    assert summary.first_name == "No"
+    assert (user.tg_id, user.first_name) == (5, "No")
+    assert counts == {}
 
 
 async def _activity_scenario(sessions, query, tz):

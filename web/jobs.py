@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable
 
 from parser.logger import get_logger
@@ -33,7 +32,7 @@ class CollectJob:
     resolved: dict | None = None
     channels: dict[str, ChannelProgress] = field(default_factory=dict)
     saved_total: int = 0
-    db_name: str | None = None
+    tg_id: int | None = None
     error: str | None = None
 
     def snapshot(self) -> dict:
@@ -60,7 +59,7 @@ class CollectJob:
                 if (progress := self.channels.get(key)) is not None
             ],
             "saved_total": self.saved_total,
-            "db_name": self.db_name,
+            "tg_id": self.tg_id,
             "error": self.error,
         }
 
@@ -95,7 +94,7 @@ class JobRegistry:
         task.cancel()
         return True
 
-    def start(self, data_dir: Path, channels: list[str], user_ref: int | str) -> CollectJob:
+    def start(self, sessions, channels: list[str], user_ref: int | str) -> CollectJob:
         if self._running_job_id is not None:
             raise JobAlreadyRunningError(
                 "Сбор комментариев уже выполняется, подождите его завершения"
@@ -110,14 +109,14 @@ class JobRegistry:
         self._running_job_id = job.job_id
 
         self._tasks[job.job_id] = self._task_factory(
-            self._run(job, data_dir, channels, user_ref)
+            self._run(job, sessions, channels, user_ref)
         )
         return job
 
     async def _run(
         self,
         job: CollectJob,
-        data_dir: Path,
+        sessions,
         channels: list[str],
         user_ref: int | str,
     ) -> None:
@@ -137,14 +136,14 @@ class JobRegistry:
         )
 
         try:
-            db_path, saved = await self._collect_fn(
-                data_dir,
+            result = await self._collect_fn(
+                sessions,
                 UserCollectorConfig(channels=channels),
                 user_ref,
                 deps,
             )
-            job.saved_total = saved
-            job.db_name = db_path.name
+            job.saved_total = result.new
+            job.tg_id = result.tg_id
             job.state = "done"
         except asyncio.CancelledError:
             job.error = "Сбор был прерван"

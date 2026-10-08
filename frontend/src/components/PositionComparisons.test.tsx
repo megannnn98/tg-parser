@@ -20,7 +20,7 @@ function response(): PositionResults {
       extraction_requests: 3, split_batches: 0, activity: "Анализ завершён",
       updated_at: "2026-10-08T11:00:00Z", processed_relations: 3, total_relations: 3 },
     ranking: [{
-      tg_id: 2, db_name: "user_2.db", display_username: "@user2", score: 83.33,
+      tg_id: 2, display_username: "@user2", score: 83.33,
       common_questions: 3, comparable_questions: 3, agreements: 2, partial: 1,
       disagreements: 0, eligible: true,
       questions: [{ question: "Запрет политических митингов", result: "partial",
@@ -46,13 +46,13 @@ it("shows local text similarity without presenting it as political agreement", a
   const value = response();
   value.method = "text_similarity";
   const evidence = value.ranking[0].questions[0];
-  value.similar_authors = [{ tg_id: 2, db_name: "user_2.db", display_username: "@user2",
+  value.similar_authors = [{ tg_id: 2, display_username: "@user2",
     similarity: 0.87, left_comments: 12, right_comments: 18,
     examples: [{ similarity: 0.92,
       left: { ...evidence.left!, position: "", quote: "" }, right: { ...evidence.right!, position: "", quote: "" } }] }];
   value.ranking = [];
   vi.mocked(getPositionComparisons).mockReturnValue(ok(value) as never);
-  renderPage(<PositionComparisons dbName="user_1.db" />);
+  renderPage(<PositionComparisons tgId={1} />);
   expect(await screen.findByText("Похожие высказывания авторов")).toBeTruthy();
   expect(screen.getByText(/Косинусное сходство: 0,87/)).toBeTruthy();
   expect(screen.getByText(/политическое согласие не определяется/)).toBeTruthy();
@@ -67,7 +67,7 @@ it("shows local text similarity without presenting it as political agreement", a
 });
 
 it("shows agreement coverage and original statements in pair details", async () => {
-  renderPage(<PositionComparisons dbName="user_1.db" />);
+  renderPage(<PositionComparisons tgId={1} />);
   expect(await screen.findByRole("link", { name: "@user2" })).toBeTruthy();
   expect(screen.getByText(/83,33/)).toBeTruthy();
   expect(screen.getByText(/3 сравнимых/)).toBeTruthy();
@@ -85,7 +85,7 @@ it("does not mix partial comparisons with the completed ranking", async () => {
   value.partial_results = value.ranking;
   value.ranking = [];
   vi.mocked(getPositionComparisons).mockReturnValue(ok(value) as never);
-  renderPage(<PositionComparisons dbName="user_1.db" />);
+  renderPage(<PositionComparisons tgId={1} />);
   expect(await screen.findByText(/Неполный результат/)).toBeTruthy();
   expect(screen.getByText("DeepSeek недоступен")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /Продолжить анализ/ }));
@@ -105,7 +105,7 @@ it("starts analysis only on click, polls progress and shows the saved result", a
     .mockReturnValueOnce(ok(idle) as never)
     .mockReturnValueOnce(ok(running) as never)
     .mockReturnValue(ok(response()) as never);
-  renderPage(<PositionComparisons dbName="user_1.db" />);
+  renderPage(<PositionComparisons tgId={1} />);
   await waitFor(() => expect(screen.getByRole("button", { name: "Найти близкие позиции" }).hasAttribute("disabled")).toBe(false));
   expect(startPositionAnalysis).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Найти близкие позиции" }));
@@ -121,7 +121,7 @@ it("keeps the saved ranking visible after a failed update", async () => {
   value.progress.error = "DeepSeek недоступен: ReadTimeout";
   value.progress.rejected_comments = 2;
   vi.mocked(getPositionComparisons).mockReturnValue(ok(value) as never);
-  renderPage(<PositionComparisons dbName="user_1.db" />);
+  renderPage(<PositionComparisons tgId={1} />);
   expect(await screen.findByRole("link", { name: "@user2" })).toBeTruthy();
   expect(screen.getByText(/показан ранее сохранённый результат/)).toBeTruthy();
   expect(screen.getByText(/Исключено из-за ошибок ответа: 2/)).toBeTruthy();
@@ -133,7 +133,7 @@ it("blocks retries after a provider change until the analysis generation changes
   value.progress.state = "provider_changed";
   value.progress.error = "Изменилась версия модели DeepSeek; требуется новая версия анализа";
   vi.mocked(getPositionComparisons).mockReturnValue(ok(value) as never);
-  renderPage(<PositionComparisons dbName="user_1.db" />);
+  renderPage(<PositionComparisons tgId={1} />);
   expect(await screen.findByText(value.progress.error)).toBeTruthy();
   expect(screen.getByRole("button", { name: /Найти близкие позиции/ }).hasAttribute("disabled")).toBe(true);
   expect(startPositionAnalysis).not.toHaveBeenCalled();

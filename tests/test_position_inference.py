@@ -69,7 +69,7 @@ def test_truncated_provider_response_is_not_accepted(monkeypatch):
 @pytest.mark.parametrize("changed_field", ["system_fingerprint", "provider"])
 def test_provider_fingerprint_change_stops_before_caching_new_analysis(tmp_path, monkeypatch, changed_field):
     from parser.position_analysis import PositionAnalysis
-    from test_position_comparison import FakeEmbedder, create_source
+    from test_position_comparison import FakeEmbedder, create_source, store_for
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test")
     identity = {"system_fingerprint": "fingerprint1", "provider": "First"}
@@ -90,7 +90,7 @@ def test_provider_fingerprint_change_stops_before_caching_new_analysis(tmp_path,
 
     async def scenario():
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-            service = PositionAnalysis(tmp_path, DeepSeekPositions(client=client), FakeEmbedder())
+            service = PositionAnalysis(store_for(tmp_path), DeepSeekPositions(client=client), FakeEmbedder())
             await service.run()
             create_source(tmp_path, 1, [(2, "hello2", "2026-01-01")])
             identity[changed_field] = "changed"
@@ -108,7 +108,7 @@ def test_provider_fingerprint_change_stops_before_caching_new_analysis(tmp_path,
                 PositionJobs(service).start()
             assert len(requests) == count
             monkeypatch.setenv("POSITION_ANALYSIS_GENERATION", "next")
-            fresh = PositionAnalysis(tmp_path, DeepSeekPositions(client=client), FakeEmbedder())
+            fresh = PositionAnalysis(store_for(tmp_path), DeepSeekPositions(client=client), FakeEmbedder())
             assert fresh.results(1).progress.state == "idle"
             assert fresh.store.get_all(fresh._namespace + ":comment") == {}
             before_fresh = len(requests)
@@ -251,8 +251,8 @@ def test_owned_http_client_is_reused_and_closed_after_session(monkeypatch):
                                     "broken_content_json", "broken_response_json"])
 def test_transient_responses_preserve_comment_for_explicit_resume(tmp_path, monkeypatch, failure):
     from parser.position_analysis import PositionAnalysis
-    from parser.position_store import digest
-    from test_position_comparison import FakeEmbedder, create_source
+    from db.analysis_store import digest
+    from test_position_comparison import FakeEmbedder, create_source, store_for
     monkeypatch.setenv("OPENROUTER_API_KEY", "test")
     calls = []
 
@@ -275,7 +275,7 @@ def test_transient_responses_preserve_comment_for_explicit_resume(tmp_path, monk
 
     async def scenario():
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-            service = PositionAnalysis(tmp_path, DeepSeekPositions(client=client), FakeEmbedder())
+            service = PositionAnalysis(store_for(tmp_path), DeepSeekPositions(client=client), FakeEmbedder())
             with pytest.raises(RuntimeError, match="продолжить анализ"):
                 await service.run()
             result = service.results(1)
@@ -293,12 +293,12 @@ def test_transient_responses_preserve_comment_for_explicit_resume(tmp_path, monk
 
 def test_content_filter_is_isolated_and_durably_excluded(tmp_path, monkeypatch):
     from parser.position_analysis import PositionAnalysis
-    from test_position_comparison import FakeEmbedder, create_source
+    from test_position_comparison import FakeEmbedder, create_source, store_for
     create_source(tmp_path, 1, [(1, "hello", "2026-01-01")])
 
     async def scenario():
         async with gateway_response(monkeypatch, {}, finish="content_filter") as client:
-            service = PositionAnalysis(tmp_path, DeepSeekPositions(client=client), FakeEmbedder())
+            service = PositionAnalysis(store_for(tmp_path), DeepSeekPositions(client=client), FakeEmbedder())
             await service.run()
             assert service.results(1).progress.rejected_comments == 1
             records = service.store.get_all(service._namespace + ":comment")
@@ -309,7 +309,7 @@ def test_content_filter_is_isolated_and_durably_excluded(tmp_path, monkeypatch):
 
 def test_provider_identity_is_read_once_per_run_and_reloaded_between_runs(tmp_path, monkeypatch):
     from parser.position_analysis import PositionAnalysis
-    from test_position_comparison import FakeEmbedder, create_source
+    from test_position_comparison import FakeEmbedder, create_source, store_for
     create_source(tmp_path, 1, [(i, f"hello{i}", "2026-01-01") for i in range(1, 18)])
     monkeypatch.setenv("OPENROUTER_API_KEY", "test")
 
@@ -324,7 +324,7 @@ def test_provider_identity_is_read_once_per_run_and_reloaded_between_runs(tmp_pa
 
     async def scenario():
         async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
-            service = PositionAnalysis(tmp_path, DeepSeekPositions(client=client), FakeEmbedder())
+            service = PositionAnalysis(store_for(tmp_path), DeepSeekPositions(client=client), FakeEmbedder())
             reads = []
             original_get = service.store.get
 

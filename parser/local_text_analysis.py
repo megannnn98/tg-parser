@@ -7,18 +7,17 @@ from contextlib import nullcontext
 from itertools import combinations
 
 from parser.comment_embeddings import LocalCommentE5
-from parser.position_analysis import PositionAnalysis, source_manifest
+from parser.position_analysis import PositionAnalysis
 from parser.position_comparison import AnalysisProgress, EmbeddingDetails, Evidence, PositionResults, SimilarAuthor
-from parser.position_store import PositionStore, digest
+from db.analysis_store import digest
 
 
 class LocalTextAnalysis(PositionAnalysis):
     # Reuse source loading, cancellation-safe persistence and progress reporting.
     # This constructor deliberately does not create a gateway or provider guard.
-    def __init__(self, data_dir, embedder=None):
-        self.data_dir = data_dir
-        self.store = PositionStore(data_dir)
-        self.embedder = embedder or LocalCommentE5(cache_dir=data_dir / "position-model-cache")
+    def __init__(self, store, embedder=None, model_cache_dir=None):
+        self.store = store
+        self.embedder = embedder or LocalCommentE5(cache_dir=model_cache_dir)
         self.version = digest(["local-comment-similarity:centroid:32-examples:v1", self.embedder.version])
         self._vectors = "comment-embeddings:" + self.embedder.version
 
@@ -28,9 +27,9 @@ class LocalTextAnalysis(PositionAnalysis):
     def initial_checkpoint(self):
         return {
             "method": "text_similarity", "version": self.version,
-            "manifest": source_manifest(self.data_dir), "pairs": {},
+            "manifest": self.store.manifest(), "pairs": {},
             "progress": AnalysisProgress(state="running", phase="comments",
-                                         activity="Чтение локальных баз комментариев").model_dump(),
+                                         activity="Чтение комментариев из базы").model_dump(),
         }
 
     @staticmethod
@@ -96,7 +95,7 @@ class LocalTextAnalysis(PositionAnalysis):
                 processed_comments += frequencies[key]
             processed += len(batch)
             await self._report(checkpoint, processed_embeddings=processed, processed_comments=processed_comments,
-                               activity="Эмбеддинги комментариев сохранены в SQLite")
+                               activity="Эмбеддинги комментариев сохранены в PostgreSQL")
         return indices, matrix
 
     @staticmethod
@@ -149,7 +148,7 @@ class LocalTextAnalysis(PositionAnalysis):
                 await self._report(checkpoint)
                 profiles, comments = await asyncio.to_thread(self._load_sources)
                 comments = [c for c in comments if c["text"] and c["text"].strip()]
-                await self._report(checkpoint, total_comments=len(comments), activity="Локальные комментарии прочитаны")
+                await self._report(checkpoint, total_comments=len(comments), activity="Комментарии прочитаны")
                 indices, matrix = await self._embed_comments(comments, checkpoint)
                 vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, matrix)
                 users = sorted(vectors)
@@ -158,7 +157,7 @@ class LocalTextAnalysis(PositionAnalysis):
                                    activity="Локальное сравнение средних эмбеддингов авторов")
                 for left, right in combinations(users, 2):
                     pair = await asyncio.to_thread(self._pair, left, right, vectors, examples, counts, matrix)
-                    pair["profiles"] = {str(u): {"tg_id": u, "db_name": profiles[u].db_name,
+                    pair["profiles"] = {str(u): {"tg_id": u,
                                                "display_username": profiles[u].display_username} for u in (left, right)}
                     checkpoint["pairs"][f"{left}:{right}"] = pair
                     await self._report(checkpoint, processed_pairs=checkpoint["progress"]["processed_pairs"] + 1,
@@ -195,10 +194,10 @@ class LocalTextAnalysis(PositionAnalysis):
         result = PositionResults(
             method="text_similarity", version=current["version"] if current else self.version, progress=progress,
             incomplete=bool(current and current["progress"]["state"] != "done"),
-            needs_update=bool(current and (current["version"] != self.version or current["manifest"] != source_manifest(self.data_dir))),
+            needs_update=bool(current and (current["version"] != self.version or current["manifest"] != self.store.manifest())),
             embeddings=EmbeddingDetails(model=getattr(self.embedder, "model_name", self.embedder.version),
                                         version=self.embedder.version, dimensions=getattr(self.embedder, "dimensions", 0),
-                                        storage=str(self.store.path), saved_vectors=self.store.count(self._vectors)),
+                                        storage=self.store.location, saved_vectors=self.store.count(self._vectors)),
         )
         for pair in (current or {}).get("pairs", {}).values():
             if tg_id not in (pair["left"], pair["right"]):

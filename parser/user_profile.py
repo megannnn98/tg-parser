@@ -1,12 +1,8 @@
+"""What a user's profile page shows. Pure data: services/profiles.py fills it."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-import logging
-from pathlib import Path
-import sqlite3
-
-
-_logger = logging.getLogger(__name__)
+from datetime import datetime
 
 _CHART_COLORS = (
     "#2563eb",
@@ -54,13 +50,13 @@ class WeeklyActivity:
 @dataclass(frozen=True)
 class UserComment:
     channel: str
-    date: str
+    message_id: int
+    date: datetime
     text: str
 
 
 @dataclass(frozen=True)
 class UserProfile:
-    db_name: str
     tg_id: int
     username: str | None
     display_name: str | None
@@ -77,246 +73,20 @@ class UserProfile:
         return "нет ника"
 
 
-class UserProfileError(ValueError):
-    pass
-
-
-def list_user_profiles(data_dir: Path) -> list[UserProfile]:
-    if not data_dir.exists():
-        return []
-
-    profiles: list[UserProfile] = []
-    for db_path in sorted(data_dir.glob("*.db")):
-        try:
-            profiles.append(load_user_profile(db_path))
-        except UserProfileError:
-            continue
-        except sqlite3.Error as exc:
-            _logger.warning("Skipped unreadable user database %s: %s", db_path, exc)
-            continue
-
-    return profiles
-
-
-def load_user_profile(db_path: Path) -> UserProfile:
-    if not db_path.exists():
-        raise UserProfileError(f"database does not exist: {db_path}")
-
-    with _connect_readonly(db_path) as db:
-        db.row_factory = sqlite3.Row
-        if not _has_user_messages(db):
-            raise UserProfileError(f"not a user comments database: {db_path}")
-
-        user = _fetch_primary_user(db, db_path)
-        channels = _fetch_channels(db, user["tg_id"], user["total_messages"])
-
-    return UserProfile(
-        db_name=db_path.name,
-        tg_id=user["tg_id"],
-        username=user["username"],
-        display_name=(
-            None
-            if user["username"]
-            else _display_name_from_db_name(db_path, user["tg_id"])
-        ),
-        total_messages=user["total_messages"],
-        channel_count=len(channels),
-        channels=channels,
-    )
-
-
-def fetch_user_comments(db_path: Path, tg_id: int) -> list[UserComment]:
-    with _connect_readonly(db_path) as db:
-        db.row_factory = sqlite3.Row
-        if not _has_user_messages(db):
-            return []
-
-        rows = db.execute(
-            """
-            SELECT channel, date, text
-            FROM user_messages
-            WHERE tg_id = ?
-            ORDER BY date, channel, message_id
-            """,
-            (tg_id,),
-        ).fetchall()
-
-    return [
-        UserComment(channel=row["channel"], date=row["date"], text=row["text"])
-        for row in rows
-    ]
-
-
-def render_user_comments_text(comments: list[UserComment]) -> str:
-    return "\n\n".join(c.text for c in comments)
-
-
-def fetch_hourly_activity(db_path: Path, tg_id: int) -> list[HourlyActivity]:
-    with _connect_readonly(db_path) as db:
-        db.row_factory = sqlite3.Row
-        if not _has_user_messages(db):
-            return []
-
-        rows = db.execute(
-            """
-            SELECT CAST(SUBSTR(date, 12, 2) AS INTEGER) AS hour,
-                   COUNT(*) AS count
-            FROM user_messages
-            WHERE tg_id = ? AND LENGTH(date) >= 19
-            GROUP BY hour
-            ORDER BY hour
-            """,
-            (tg_id,),
-        ).fetchall()
-
-    counts = {int(row["hour"]): row["count"] for row in rows}
-    return [
-        HourlyActivity(hour=h, count=counts.get(h, 0))
-        for h in range(24)
-    ]
-
-
-def fetch_daily_activity(db_path: Path, tg_id: int) -> list[DailyActivity]:
-    with _connect_readonly(db_path) as db:
-        db.row_factory = sqlite3.Row
-        if not _has_user_messages(db):
-            return []
-
-        rows = db.execute(
-            """
-            SELECT SUBSTR(date, 1, 10) AS day,
-                   COUNT(*) AS count
-            FROM user_messages
-            WHERE tg_id = ? AND LENGTH(date) >= 19
-            GROUP BY day
-            ORDER BY day
-            """,
-            (tg_id,),
-        ).fetchall()
-
-    return [
-        DailyActivity(date=row["day"], count=row["count"])
-        for row in rows
-    ]
-
-
-def fetch_weekly_activity(db_path: Path, tg_id: int) -> list[WeeklyActivity]:
-    with _connect_readonly(db_path) as db:
-        db.row_factory = sqlite3.Row
-        if not _has_user_messages(db):
-            return []
-
-        # strftime('%w') counts from Sunday; shifted so that Monday is 0.
-        rows = db.execute(
-            """
-            SELECT (CAST(STRFTIME('%w', date) AS INTEGER) + 6) % 7 AS weekday,
-                   CAST(SUBSTR(date, 12, 2) AS INTEGER) AS hour,
-                   COUNT(*) AS count
-            FROM user_messages
-            WHERE tg_id = ? AND LENGTH(date) >= 19
-                  AND STRFTIME('%w', date) IS NOT NULL
-            GROUP BY weekday, hour
-            """,
-            (tg_id,),
-        ).fetchall()
-
-    counts = {(int(row["weekday"]), int(row["hour"])): row["count"] for row in rows}
-    return [
-        WeeklyActivity(weekday=weekday, hour=hour, count=counts.get((weekday, hour), 0))
-        for weekday in range(7)
-        for hour in range(24)
-    ]
-
-
-def _connect_readonly(db_path: Path) -> sqlite3.Connection:
-    uri = f"file:{db_path.resolve()}?mode=ro"
-    return sqlite3.connect(uri, uri=True)
-
-
-def _has_user_messages(db: sqlite3.Connection) -> bool:
-    row = db.execute(
-        """
-        SELECT 1
-        FROM sqlite_master
-        WHERE type = 'table' AND name = 'user_messages'
-        """
-    ).fetchone()
-    return row is not None
-
-
-def _fetch_primary_user(
-    db: sqlite3.Connection, db_path: Path
-) -> sqlite3.Row | dict[str, int | str | None]:
-    row = db.execute(
-        """
-        SELECT
-            tg_id,
-            (
-                SELECT username
-                FROM user_messages AS latest
-                WHERE latest.tg_id = user_messages.tg_id
-                  AND latest.username IS NOT NULL
-                  AND latest.username != ''
-                ORDER BY latest.id DESC
-                LIMIT 1
-            ) AS username,
-            COUNT(*) AS total_messages
-        FROM user_messages
-        GROUP BY tg_id
-        ORDER BY total_messages DESC, tg_id
-        LIMIT 1
-        """
-    ).fetchone()
-    if row is None:
-        # Collection creates the database even when no comments are found.
-        # Its filename retains the Telegram ID in both supported formats:
-        # <name>_<id>.db and <id>.db.
-        id_part = db_path.stem.rsplit("_", 1)[-1]
-        if not id_part.isascii() or not id_part.isdecimal():
-            raise UserProfileError("empty user database has no Telegram ID")
-        return {"tg_id": int(id_part), "username": None, "total_messages": 0}
-    return row
-
-
-def _display_name_from_db_name(db_path: Path, tg_id: int) -> str | None:
-    stem = db_path.stem
-    suffix = f"_{tg_id}"
-    if not stem.endswith(suffix):
-        return None
-
-    raw_name = stem[: -len(suffix)]
-    if not raw_name:
-        return None
-
-    return " ".join(part.capitalize() for part in raw_name.split("_") if part)
-
-
-def _fetch_channels(
-    db: sqlite3.Connection,
-    tg_id: int,
-    total_messages: int,
-) -> list[ChannelProfile]:
-    rows = db.execute(
-        """
-        SELECT channel, COUNT(*) AS message_count
-        FROM user_messages
-        WHERE tg_id = ?
-        GROUP BY channel
-        ORDER BY message_count DESC, channel
-        """,
-        (tg_id,),
-    ).fetchall()
-
+def channel_shares(counts: list[tuple[str, int]]) -> list[ChannelProfile]:
+    """Donut segments for (channel, message count) pairs, largest first."""
+    total = sum(count for _, count in counts)
     offset = 0.0
     channels: list[ChannelProfile] = []
-    for index, row in enumerate(rows):
-        percent = round(row["message_count"] * 100 / total_messages, 1)
-        if index == len(rows) - 1:
+    for index, (name, count) in enumerate(counts):
+        percent = round(count * 100 / total, 1)
+        # The last segment closes the gap that rounding leaves.
+        if index == len(counts) - 1:
             percent = round(100 - offset, 1)
         channels.append(
             ChannelProfile(
-                name=row["channel"],
-                message_count=row["message_count"],
+                name=name,
+                message_count=count,
                 percent=percent,
                 color=_CHART_COLORS[index % len(_CHART_COLORS)],
                 dasharray=f"{percent} {round(100 - percent, 1)}",
@@ -326,3 +96,7 @@ def _fetch_channels(
         offset += percent
 
     return channels
+
+
+def render_user_comments_text(comments: list[UserComment]) -> str:
+    return "\n\n".join(c.text for c in comments)

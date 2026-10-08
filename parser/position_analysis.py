@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter, deque
-from contextlib import closing, nullcontext
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from itertools import combinations
 from pathlib import Path
 import os
 import logging
-import sqlite3
 import time
 
 from parser.position_comparison import (
@@ -20,23 +19,7 @@ from parser.position_inference import (
     ProviderChangedError,
     InvalidResponseError,
 )
-from parser.position_store import PositionStore, digest
-from parser.user_profile import list_user_profiles
-
-
-def source_manifest(data_dir: Path) -> str:
-    files = []
-    for path in sorted(data_dir.glob("*.db")):
-        # The collector's shared database is not an author profile.
-        if path.name == "app.db":
-            continue
-        for item in (path, Path(str(path) + "-wal")):
-            try:
-                stat = item.stat()
-                files.append((item.name, stat.st_size, stat.st_mtime_ns))
-            except FileNotFoundError:
-                pass
-    return digest(files)
+from db.analysis_store import digest
 
 
 def date_key(date: str) -> datetime:
@@ -47,11 +30,10 @@ def date_key(date: str) -> datetime:
 
 
 class PositionAnalysis:
-    def __init__(self, data_dir: Path, gateway=None, embedder=None):
-        self.data_dir = data_dir
-        self.store = PositionStore(data_dir)
+    def __init__(self, store, gateway=None, embedder=None, model_cache_dir: Path | None = None):
+        self.store = store
         self.gateway = gateway or DeepSeekPositions()
-        self.embedder = embedder or LocalE5(cache_dir=data_dir / "position-model-cache")
+        self.embedder = embedder or LocalE5(cache_dir=model_cache_dir)
         self.version = digest([
             getattr(self.gateway, "version", self.gateway.model), self.embedder.version, RULES_VERSION,
             os.getenv("POSITION_ANALYSIS_GENERATION", "1"),
@@ -75,29 +57,10 @@ class PositionAnalysis:
             self._provider_identity = identity
 
     def _load_sources(self):
-        profiles = {}
-        comments = {}
-        for profile in list_user_profiles(self.data_dir):
-            # Rename/duplicate files must not produce duplicate authors.
-            old = profiles.get(profile.tg_id)
-            if old is None or profile.total_messages > old.total_messages:
-                profiles[profile.tg_id] = profile
-            with closing(sqlite3.connect(
-                f"{(self.data_dir / profile.db_name).resolve().as_uri()}?mode=ro", uri=True
-            )) as db:
-                for channel, message_id, text, date in db.execute(
-                    "SELECT channel, message_id, text, date FROM user_messages WHERE tg_id=?",
-                    (profile.tg_id,),
-                ):
-                    date_key(date)  # Fail explicitly instead of picking a false latest position.
-                    key = (profile.tg_id, channel, message_id)
-                    comments[key] = {
-                        "tg_id": profile.tg_id, "channel": channel,
-                        "message_id": message_id, "text": text, "date": date,
-                    }
-        return profiles, sorted(comments.values(), key=lambda c: (
-            c["tg_id"], date_key(c["date"]), c["channel"], c["message_id"]
-        ))
+        profiles, comments = self.store.load_sources()
+        for comment in comments:
+            date_key(comment["date"])  # Fail explicitly instead of picking a false latest position.
+        return profiles, comments
 
     async def _store_write(self, method, *args):
         # A cancelled job must wait for its writer before releasing the analysis lock.
@@ -302,7 +265,7 @@ class PositionAnalysis:
             for text, vector in zip(batch, output):
                 vectors[text] = vector
             await self._report(checkpoint, processed_embeddings=len(vectors),
-                               activity="Новые эмбеддинги сохранены в SQLite")
+                               activity="Новые эмбеддинги сохранены в PostgreSQL")
             await asyncio.sleep(0)
 
         await self._report(checkpoint, phase="questions", total_questions=len(current_texts),
@@ -371,7 +334,7 @@ class PositionAnalysis:
 
     def initial_checkpoint(self):
         return {
-            "version": self.version, "manifest": source_manifest(self.data_dir),
+            "version": self.version, "manifest": self.store.manifest(),
             "pairs": {}, "progress": AnalysisProgress(
                 state="running", phase="comments", activity="Чтение истории всех собранных авторов",
                 updated_at=datetime.now(timezone.utc).isoformat(),
@@ -427,7 +390,7 @@ class PositionAnalysis:
                             "left": left, "right": right, "questions": questions,
                             "profiles": {
                                 str(user): {
-                                    "tg_id": user, "db_name": profiles[user].db_name,
+                                    "tg_id": user,
                                     "display_username": profiles[user].display_username,
                                 } for user in (left, right)
                             },
@@ -475,12 +438,12 @@ class PositionAnalysis:
             embeddings=EmbeddingDetails(
                 model=getattr(self.embedder, "model_name", self.embedder.version),
                 version=self.embedder.version, dimensions=getattr(self.embedder, "dimensions", 0),
-                storage=str(self.store.path), saved_vectors=self.store.count("embeddings:" + self.embedder.version),
+                storage=self.store.location, saved_vectors=self.store.count("embeddings:" + self.embedder.version),
             ),
             incomplete=bool(current and current["progress"]["state"] != "done"),
             needs_update=bool(current and (
                 current["version"] != self.version
-                or current["manifest"] != source_manifest(self.data_dir)
+                or current["manifest"] != self.store.manifest()
             )),
         )
         if not current:

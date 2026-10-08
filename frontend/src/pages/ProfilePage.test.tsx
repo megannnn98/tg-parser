@@ -20,7 +20,6 @@ vi.mock("@/api/generated", () => ({
 function detail(username: string | null) {
   return {
     profile: {
-      db_name: "vasya_7.db",
       tg_id: 7,
       username,
       display_name: null,
@@ -53,19 +52,26 @@ beforeEach(() => {
 });
 
 function renderProfile() {
-  return renderPage(<ProfilePage />, { path: "/users/:dbName", url: "/users/vasya_7.db" });
+  return renderPage(<ProfilePage />, { path: "/users/:tgId", url: "/users/7" });
 }
 
 it("shows the profile, its channels and the export link", async () => {
   renderProfile();
 
   expect(await screen.findByRole("heading", { name: "@vasya" })).toBeTruthy();
-  expect(getUser).toHaveBeenCalledWith({ path: { db_name: "vasya_7.db" } });
+  expect(getUser).toHaveBeenCalledWith({ path: { tg_id: 7 } });
   expect(screen.getByText("chan_a")).toBeTruthy();
   expect(screen.getByText("66.7%")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Скачать .txt" }).getAttribute("href")).toBe(
-    "/api/v1/users/vasya_7.db/comments.txt"
+    "/api/v1/users/7/comments.txt"
   );
+});
+
+it("does not ask the API about an address that is not a Telegram id", async () => {
+  renderPage(<ProfilePage />, { path: "/users/:tgId", url: "/users/vasya_7.db" });
+
+  expect(await screen.findByText(/Страница не найдена/)).toBeTruthy();
+  expect(getUser).not.toHaveBeenCalled();
 });
 
 it("shows an empty collection without an error and disables political analysis", async () => {
@@ -133,7 +139,7 @@ it("refreshes the comments by username, or by id without one", async () => {
       resolved: null,
       channels: [{ channel: "chan_a", status: "started", saved: 0, error: null }],
       saved_total: 0,
-      db_name: null,
+      tg_id: null,
       error: null
     }) as never
   );
@@ -165,7 +171,7 @@ it("shows the political coordinates on demand", async () => {
   const meter = await screen.findByRole("meter", { name: "Левая — Правая" });
   expect(meter.getAttribute("aria-valuenow")).toBe("75");
   expect(screen.getByText(/Итого: 10 из 40 сообщений \(25%\)/)).toBeTruthy();
-  expect(analyzePolitical).toHaveBeenCalledWith({ path: { db_name: "vasya_7.db" } });
+  expect(analyzePolitical).toHaveBeenCalledWith({ path: { tg_id: 7 } });
 });
 
 it("shows why the political analysis failed", async () => {
@@ -192,7 +198,7 @@ it("drops the political result once a refresh brings new comments", async () => 
       resolved: null,
       channels: [],
       saved_total: 60,
-      db_name: "vasya_7.db",
+      tg_id: 7,
       error: null
     }) as never
   );
