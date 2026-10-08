@@ -542,3 +542,62 @@ def test_collect_does_not_demote_a_collected_profile(run_db):
         return await _users(sessions)
 
     assert run_db(scenario) == [(555, "vasya", True)]
+
+
+# --- scripts.refresh_texts ---------------------------------------------------
+
+
+def test_refresh_texts_restores_text_for_every_profile_with_one_lookup_per_channel(
+    run_db,
+):
+    from scripts.refresh_texts import refresh_texts
+
+    tg_client = FakeTGClient(
+        {"chan_a": _chat(1001), "chan_broken": RuntimeError("gone"), "chan_b": _chat(1002)}
+    )
+    logger = FakeLogger()
+    originals = {
+        (1001, 555): [_comment(10, "Привет"), _comment(11, "Новый")],
+        (1002, 555): [_comment(10, "В Другом Канале")],
+        (1001, 777): [_comment(20, "Чужой")],
+    }
+
+    async def fetch(_client, chat_id, tg_id):
+        for msg in originals.get((chat_id, tg_id), []):
+            yield msg
+
+    async def scenario(sessions):
+        # What the importer left: lowercased text, one comment not yet stored.
+        for tg_id, stored in ((555, {1001: [_comment(10, "привет")]}), (777, {})):
+            deps, _ = _user_deps(
+                FakeTGClient({"chan_a": _chat(1001)}),
+                FakeLogger(),
+                stored,
+                resolved=TelegramUser(
+                    tg_id=tg_id, username=f"u{tg_id}", first_name=None, last_name=None
+                ),
+            )
+            await collect_user_comments(
+                sessions, UserCollectorConfig(channels=["chan_a"]), tg_id, deps
+            )
+        result = await refresh_texts(
+            sessions,
+            ["chan_a", "chan_broken", "chan_b"],
+            tg_client_factory=lambda: tg_client,
+            fetch_user_messages_fn=fetch,
+            logger=logger,
+        )
+        return result, await _rows(sessions)
+
+    (fetched, new), rows = run_db(scenario)
+
+    assert [(r[0], r[1], r[2], r[3]) for r in rows] == [
+        (555, "chan_a", 10, "Привет"),
+        (555, "chan_a", 11, "Новый"),
+        (777, "chan_a", 20, "Чужой"),
+        (555, "chan_b", 10, "В Другом Канале"),
+    ]
+    assert (fetched, new) == (4, 3)
+    # One lookup per channel, however many profiles there are.
+    assert tg_client.get_chat_calls == ["chan_a", "chan_broken", "chan_b"]
+    assert logger.exceptions == ["[chan_broken] failed, skipped"]
