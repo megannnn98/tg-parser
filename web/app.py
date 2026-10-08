@@ -23,6 +23,7 @@ from parser.user_profile import (
     fetch_daily_activity,
     fetch_hourly_activity,
     fetch_user_comments,
+    fetch_weekly_activity,
     list_user_profiles,
     load_user_profile,
     render_user_comments_text,
@@ -112,6 +113,7 @@ def get_user(request: Request, db_name: str):
         profile,
         fetch_hourly_activity(db_path, profile.tg_id),
         fetch_daily_activity(db_path, profile.tg_id),
+        fetch_weekly_activity(db_path, profile.tg_id),
     )
 
 

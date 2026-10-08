@@ -45,6 +45,13 @@ class DailyActivity:
 
 
 @dataclass(frozen=True)
+class WeeklyActivity:
+    weekday: int  # 0 is Monday
+    hour: int
+    count: int
+
+
+@dataclass(frozen=True)
 class UserComment:
     channel: str
     date: str
@@ -190,6 +197,34 @@ def fetch_daily_activity(db_path: Path, tg_id: int) -> list[DailyActivity]:
     return [
         DailyActivity(date=row["day"], count=row["count"])
         for row in rows
+    ]
+
+
+def fetch_weekly_activity(db_path: Path, tg_id: int) -> list[WeeklyActivity]:
+    with _connect_readonly(db_path) as db:
+        db.row_factory = sqlite3.Row
+        if not _has_user_messages(db):
+            return []
+
+        # strftime('%w') counts from Sunday; shifted so that Monday is 0.
+        rows = db.execute(
+            """
+            SELECT (CAST(STRFTIME('%w', date) AS INTEGER) + 6) % 7 AS weekday,
+                   CAST(SUBSTR(date, 12, 2) AS INTEGER) AS hour,
+                   COUNT(*) AS count
+            FROM user_messages
+            WHERE tg_id = ? AND LENGTH(date) >= 19
+                  AND STRFTIME('%w', date) IS NOT NULL
+            GROUP BY weekday, hour
+            """,
+            (tg_id,),
+        ).fetchall()
+
+    counts = {(int(row["weekday"]), int(row["hour"])): row["count"] for row in rows}
+    return [
+        WeeklyActivity(weekday=weekday, hour=hour, count=counts.get((weekday, hour), 0))
+        for weekday in range(7)
+        for hour in range(24)
     ]
 
 

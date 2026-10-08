@@ -290,6 +290,10 @@ export type UserDetail = {
      * Daily Activity
      */
     daily_activity: Array<DayCount>;
+    /**
+     * Weekly Activity
+     */
+    weekly_activity: Array<WeekHourCount>;
 };
 
 /**
@@ -308,6 +312,24 @@ export type ValidationError = {
      * Error Type
      */
     type: string;
+};
+
+/**
+ * WeekHourCount
+ */
+export type WeekHourCount = {
+    /**
+     * Weekday
+     */
+    weekday: number;
+    /**
+     * Hour
+     */
+    hour: number;
+    /**
+     * Count
+     */
+    count: number;
 };
 
 export type ListProfilesData = {

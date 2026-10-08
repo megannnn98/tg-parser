@@ -335,6 +335,14 @@ def test_api_v1_user_detail_includes_profile_and_activity(tmp_path: Path):
         {"date": "2026-08-01", "count": 2},
         {"date": "2026-08-02", "count": 1},
     ]
+    weekly = body["weekly_activity"]
+    assert len(weekly) == 7 * 24
+    # 2026-08-01 is a Saturday, 2026-08-02 a Sunday.
+    assert [cell for cell in weekly if cell["count"]] == [
+        {"weekday": 5, "hour": 8, "count": 1},
+        {"weekday": 5, "hour": 14, "count": 1},
+        {"weekday": 6, "hour": 14, "count": 1},
+    ]
 
 
 def test_api_v1_user_detail_returns_404_for_unknown_db(tmp_path: Path):

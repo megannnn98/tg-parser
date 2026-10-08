@@ -35,7 +35,8 @@ function detail(username: string | null) {
     daily_activity: [
       { date: "2026-08-01", count: 2 },
       { date: "2026-08-02", count: 1 }
-    ]
+    ],
+    weekly_activity: [{ weekday: 5, hour: 8, count: 1 }]
   };
 }
 

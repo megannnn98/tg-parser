@@ -759,13 +759,21 @@
             },
             "type": "array",
             "title": "Daily Activity"
+          },
+          "weekly_activity": {
+            "items": {
+              "$ref": "#/components/schemas/WeekHourCount"
+            },
+            "type": "array",
+            "title": "Weekly Activity"
           }
         },
         "type": "object",
         "required": [
           "profile",
           "hourly_activity",
-          "daily_activity"
+          "daily_activity",
+          "weekly_activity"
         ],
         "title": "UserDetail"
       },
@@ -801,6 +809,29 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WeekHourCount": {
+        "properties": {
+          "weekday": {
+            "type": "integer",
+            "title": "Weekday"
+          },
+          "hour": {
+            "type": "integer",
+            "title": "Hour"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "weekday",
+          "hour",
+          "count"
+        ],
+        "title": "WeekHourCount"
       }
     }
   }
