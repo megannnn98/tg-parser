@@ -128,11 +128,20 @@ sqlite3 data/mega_palez_123456789.db \
 ```
 
 После успешного сбора в `data/` появится файл вида
-`mega_palez_<tg_id>.db`. Затем запустите web UI:
+`mega_palez_<tg_id>.db`. Затем соберите фронтенд (один раз и после каждого
+изменения в `frontend/`; нужен Node.js 22.13+, на Arch: `sudo pacman -S nodejs npm`)
+и запустите web UI:
 
 ```
+(cd frontend && npm ci && npm run build)
 ./scripts/run.sh web
 ```
+
+FastAPI отдаёт сборку из `frontend/dist` (другой путь можно задать в `FRONTEND_DIST`), а
+JSON API живёт под `/api/v1` (схема — `http://localhost:8000/docs`). Без сборки любая
+страница отвечает `503` с подсказкой, как её получить. Вместо локальной сборки можно
+скачать артефакт `frontend-dist` последнего прогона GitHub Actions и распаковать его в
+`frontend/dist`.
 
 Откройте в браузере:
 
@@ -178,7 +187,7 @@ DATA_DIR=data .venv/bin/python -m uvicorn web.app:app --host 127.0.0.1 --port 80
 Быстрая проверка из терминала:
 
 ```
-curl -sS http://127.0.0.1:8000/ | grep -E "Пользователи|@"
+curl -sS http://127.0.0.1:8000/api/v1/profiles
 ```
 
 Если страница пустая, проверьте:
@@ -191,6 +200,23 @@ sqlite3 data/mega_palez_<tg_id>.db \
 
 `app.db` в списке профилей не показывается: это общая база режима `collect`, а web UI
 ищет только таблицу `user_messages`.
+
+## Фронтенд
+
+`frontend/` — React 19 + TypeScript + Vite, Tailwind CSS 4 и компоненты shadcn/ui,
+данные через TanStack Query, роутинг react-router; тот же стек, что в соседнем проекте
+ebnv. Клиент API (`src/api/generated`) генерируется из OpenAPI-схемы бэкенда:
+
+```
+cd frontend
+npm run dev            # dev-сервер на :5173, /api/v1 проксируется на :8000
+npm run typecheck
+npm test
+PYTHON=../.venv/bin/python npm run generate:api   # после изменения API
+```
+
+`frontend/openapi/openapi.json` и `src/api/generated` закоммичены; `tests/test_web_app.py`
+падает, если схема устарела.
 
 ## Android-клиент
 
@@ -304,14 +330,22 @@ Python-код (парсер, FastAPI, pyrogram) запускается в нём
    ```
    Pyrogram спросит номер телефона и код из основного приложения Telegram;
    сессия сохранится в `my_session.session` внутри Termux.
-5. **Запустите web UI**:
+5. **Положите сборку фронтенда.** Node.js в Termux не нужен: скачайте артефакт
+   `frontend-dist` последнего прогона GitHub Actions (вкладка Actions → прогон →
+   Artifacts) и распакуйте его в `frontend/dist`:
+   ```
+   mkdir -p frontend/dist && unzip -o ~/storage/downloads/frontend-dist.zip -d frontend/dist
+   ```
+   (`~/storage` появляется после `termux-setup-storage`.) Повторяйте после `git pull`,
+   если менялся `frontend/`.
+6. **Запустите web UI**:
    ```
    termux-wake-lock
    python -m uvicorn web.app:app --host 127.0.0.1 --port 8000
    ```
    `termux-wake-lock` удерживает CPU активным, чтобы Android не убил процесс
    в фоне. После остановки uvicorn отпустите блокировку: `termux-wake-unlock`.
-6. В WebView-приложении впишите URL `http://127.0.0.1:8000`.
+7. В WebView-приложении впишите URL `http://127.0.0.1:8000`.
 
 **Ограничения Termux-пути:**
 

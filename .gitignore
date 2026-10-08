@@ -10,3 +10,6 @@ out.txt
 data/model.pt
 data/tokenizer/
 .env
+/frontend/node_modules/
+/frontend/dist/
+/frontend/*.tsbuildinfo
