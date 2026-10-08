@@ -18,7 +18,7 @@ from parser.storage import (
     upsert_channels_many,
     upsert_users_many,
 )
-from parser.telegram import fetch_messages, get_client
+from parser.telegram import FATAL_TG_ERRORS, fetch_messages, get_client
 
 
 _QUEUE_CHANNEL = "channel"
@@ -141,19 +141,31 @@ async def collect_db(db_path: Path, cfg: CollectorConfig, deps: CollectorDeps = 
     tg_client = deps.tg_client_factory()
     try:
         async with tg_client:
+            failed = 0
+
             async def one(channel: str):
+                nonlocal failed
                 async with sem:
                     logger.info(f"[{channel}] start")
-                    await collect_channel(
-                        tg_client=tg_client,
-                        queue=queue,
-                        channel_username=channel,
-                        fetch_messages_fn=deps.fetch_messages_fn,
-                        logger=logger,
-                    )
+                    try:
+                        await collect_channel(
+                            tg_client=tg_client,
+                            queue=queue,
+                            channel_username=channel,
+                            fetch_messages_fn=deps.fetch_messages_fn,
+                            logger=logger,
+                        )
+                    except FATAL_TG_ERRORS:
+                        raise
+                    except Exception:
+                        failed += 1
+                        logger.exception(f"[{channel}] failed, skipped")
+                        return
                     logger.info(f"[{channel}] done")
 
             await asyncio.gather(*(one(ch) for ch in cfg.channels))
+            if failed:
+                logger.warning(f"{failed} of {len(cfg.channels)} channels failed")
     finally:
         await queue.put(None)
         await writer_task
