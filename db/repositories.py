@@ -4,11 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import Channel, Message, User
+from db.models import Channel, LegacyMessage, Message, User
 
 # asyncpg allows 32767 bind parameters per statement; a message row takes five.
 _BATCH_ROWS = 2000
@@ -125,7 +125,19 @@ async def get_user_by_tg_id(session: AsyncSession, tg_id: int) -> User | None:
     return await session.scalar(select(User).where(User.tg_id == tg_id))
 
 
-async def list_user_summaries(session: AsyncSession) -> list[UserSummary]:
+async def mark_profiles_collected(
+    session: AsyncSession, collected_at: dict[int, datetime], overwrite: bool = True
+) -> None:
+    """Takes {users.id: time of the user-comments run}."""
+    for user_id, when in collected_at.items():
+        stmt = update(User).where(User.id == user_id)
+        if not overwrite:
+            stmt = stmt.where(User.profile_collected_at.is_(None))
+        await session.execute(stmt.values(profile_collected_at=when))
+
+
+async def list_profile_summaries(session: AsyncSession) -> list[UserSummary]:
+    """Users whose comments were collected, including those with none found."""
     stmt = (
         select(
             User.id,
@@ -137,6 +149,7 @@ async def list_user_summaries(session: AsyncSession) -> list[UserSummary]:
             func.count(Message.channel_id.distinct()),
         )
         .outerjoin(Message, Message.user_id == User.id)
+        .where(User.profile_collected_at.is_not(None))
         .group_by(User.id)
         .order_by(User.tg_id)
     )
@@ -208,3 +221,67 @@ async def weekly_activity(
     return {
         (int(d) - 1, int(h)): count for d, h, count in await session.execute(stmt)
     }
+
+
+# The SQLite importer: it fills gaps and never overwrites what is already stored.
+
+
+async def insert_users_if_absent(
+    session: AsyncSession, users: dict[int, tuple[str | None, str | None]]
+) -> tuple[dict[int, int], int]:
+    """Takes {tg_id: (username, first_name)}; returns ({tg_id: users.id}, new rows)."""
+    ids: dict[int, int] = {}
+    inserted = 0
+    rows = [
+        {"tg_id": tg_id, "username": users[tg_id][0], "first_name": users[tg_id][1]}
+        for tg_id in sorted(users)
+    ]
+    for start in range(0, len(rows), _BATCH_ROWS):
+        stmt = insert(User).values(rows[start : start + _BATCH_ROWS])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[User.tg_id],
+            set_={
+                "username": func.coalesce(User.username, stmt.excluded.username),
+                "first_name": func.coalesce(User.first_name, stmt.excluded.first_name),
+            },
+            # xmax is 0 only for a row this statement created.
+        ).returning(User.tg_id, User.id, literal_column("xmax = 0"))
+        for tg_id, user_id, is_new in await session.execute(stmt):
+            ids[tg_id] = user_id
+            inserted += is_new
+    return ids, inserted
+
+
+async def ensure_channels(
+    session: AsyncSession, usernames: set[str]
+) -> tuple[dict[str, int], int]:
+    """Returns ({username: channels.id}, new rows)."""
+    ids: dict[str, int] = {}
+    inserted = 0
+    rows = [{"username": username} for username in sorted(usernames)]
+    for start in range(0, len(rows), _BATCH_ROWS):
+        stmt = insert(Channel).values(rows[start : start + _BATCH_ROWS])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Channel.username],
+            # A no-op update, so that RETURNING also yields existing rows.
+            set_={"username": stmt.excluded.username},
+        ).returning(Channel.username, Channel.id, literal_column("xmax = 0"))
+        for username, channel_id, is_new in await session.execute(stmt):
+            ids[username] = channel_id
+            inserted += is_new
+    return ids, inserted
+
+
+async def insert_legacy_messages(session: AsyncSession, rows: list[dict]) -> int:
+    inserted = 0
+    for start in range(0, len(rows), _BATCH_ROWS):
+        stmt = (
+            insert(LegacyMessage)
+            .values(rows[start : start + _BATCH_ROWS])
+            .on_conflict_do_nothing(
+                index_elements=[LegacyMessage.source, LegacyMessage.source_row_id]
+            )
+            .returning(LegacyMessage.id)
+        )
+        inserted += len((await session.execute(stmt)).all())
+    return inserted

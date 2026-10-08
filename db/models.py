@@ -38,6 +38,11 @@ class User(Base):
     username: Mapped[str | None] = mapped_column(Text)
     first_name: Mapped[str | None] = mapped_column(Text)
     last_name: Mapped[str | None] = mapped_column(Text)
+    # Set by user-comments: the user's whole comment history was requested, so
+    # they have a profile. Unset for authors only seen while collecting channels.
+    profile_collected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -226,10 +226,16 @@ def test_channel_statistics(run_db):
                     _message(other_user, news, 3),
                 ],
             )
+            # Seen in a channel only: an author, not a collected profile.
+            author = await repo.upsert_user(session, 3, "carol")
+            await repo.insert_messages(session, [_message(author, news, 4)])
+            await repo.mark_profiles_collected(
+                session, {user_id: _utc(2026, 2, 1), other_user: _utc(2026, 2, 1)}
+            )
         async with sessions() as session:
             return (
                 await repo.channel_counts(session, user_id),
-                await repo.list_user_summaries(session),
+                await repo.list_profile_summaries(session),
             )
 
     counts, summaries = run_db(scenario)
@@ -242,12 +248,13 @@ def test_channel_statistics(run_db):
     ]
 
 
-def test_user_without_messages_is_listed(run_db):
+def test_collected_user_without_messages_is_listed(run_db):
     async def scenario(sessions):
         async with sessions.begin() as session:
-            await repo.upsert_user(session, 5, None, "No", "Comments")
+            user_id = await repo.upsert_user(session, 5, None, "No", "Comments")
+            await repo.mark_profiles_collected(session, {user_id: _utc(2026, 2, 1)})
         async with sessions() as session:
-            return await repo.list_user_summaries(session)
+            return await repo.list_profile_summaries(session)
 
     (summary,) = run_db(scenario)
 

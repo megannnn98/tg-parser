@@ -32,6 +32,7 @@ def upgrade() -> None:
         sa.Column("username", sa.Text),
         sa.Column("first_name", sa.Text),
         sa.Column("last_name", sa.Text),
+        sa.Column("profile_collected_at", sa.DateTime(timezone=True)),
         _timestamp("created_at"),
         _timestamp("updated_at"),
         sa.PrimaryKeyConstraint("id", name="pk_users"),
