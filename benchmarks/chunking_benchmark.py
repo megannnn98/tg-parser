@@ -38,6 +38,7 @@ from embeddings.e5 import SPECS, E5Encoder
 OUT = Path("data/benchmark")
 CONTEXT_BUDGET = 1000  # tokens of retrieved text an LLM prompt gets
 SHORT_TOKENS = 5
+SHORT_MESSAGE_CUTOFFS = (5, 10)
 
 MINUTE, HOUR, DAY = 60, 3600, 86400
 
@@ -491,6 +492,22 @@ def main() -> None:
         print(f"{name}: recall@10 {results[name]['recall@10']:.3f}", flush=True)
 
     message = indexes["A message"]
+    # What is lost and gained by not embedding very short messages at all.
+    for minimum in SHORT_MESSAGE_CUTOFFS:
+        if args.only is not None:
+            break
+        name = f"A message, only >= {minimum} tokens"
+        keep = np.flatnonzero(message.tokens >= minimum)
+        index = Index(name, [message.units[i] for i in keep], message.owner[keep],
+                      message.tokens[keep], message.vectors[keep],
+                      message.encode_seconds * len(keep) / len(message.units))
+        indexes[name] = index
+        results[name] = {
+            "strategy": "message", "parameters": {"min_tokens": minimum},
+            **evaluate(index, queries, query_vectors, corpus),
+            **structure(index, corpus, message, limit),
+            "topic_silhouette": topic_separation(index, queries),
+        }
     for chunk_name in MULTI_LEVEL:
         if chunk_name not in indexes:
             continue

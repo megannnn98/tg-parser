@@ -1,8 +1,8 @@
 # Перевод хранения с SQLite на PostgreSQL
 
 Статус на 2026-10-08: приложение работает на PostgreSQL, SQLite в работе не
-участвует. Таблицы эмбеддингов ещё не созданы: размерность вектора фиксируется
-после выбора модели, см. [embedding-chunking-research.md](embedding-chunking-research.md).
+участвует. Таблицы эмбеддингов созданы после выбора модели, обоснование — в
+[embedding-chunking-research.md](embedding-chunking-research.md).
 
 ## Зачем
 
@@ -138,8 +138,43 @@ entity analysis_cache {
   * value : jsonb
 }
 
+entity embedding_models {
+  * id : bigint <<PK>>
+  --
+  * name : text
+  * revision : text
+  * dimensions : int
+  * pooling : text
+  * normalized : boolean
+  * max_tokens : int
+  * input_prefix : text
+  ..
+  UNIQUE(name, revision, pooling,
+         normalized, input_prefix)
+}
+
+entity message_embeddings {
+  * message_id : bigint <<PK, FK>>
+  * model_id : bigint <<PK, FK>>
+  --
+  * embedding : vector(768)
+  * created_at : timestamptz
+}
+
+entity chunk_embeddings {
+  * chunk_id : bigint <<PK, FK>>
+  * model_id : bigint <<PK, FK>>
+  --
+  * embedding : vector(768)
+  * created_at : timestamptz
+}
+
 users ||--o{ messages
 channels ||--o{ messages
+messages ||--o{ message_embeddings
+chunks ||--o{ chunk_embeddings
+embedding_models ||--o{ message_embeddings
+embedding_models ||--o{ chunk_embeddings
 users ||--o{ chunks
 chunk_sets ||--o{ chunks
 channels |o--o{ chunks
@@ -176,16 +211,21 @@ messages ||--o{ chunk_messages
 
 ### Эмбеддинги
 
-Таблиц пока нет. Намеченная форма, которая появится миграцией после выбора модели:
-
-- `embedding_models` — имя, ревизия (обязательная: это коммит репозитория модели),
-  размерность, способ объединения токенов, нормализация, префикс входа;
-- `message_embeddings` с ключом `(message_id, model_id)`;
-- `chunk_embeddings` с ключом `(chunk_id, model_id)`, удаляются вместе с чанком.
-
-Две отдельные таблицы, а не одна с двумя необязательными внешними ключами:
-у каждого эмбеддинга обязательно есть владелец. Столбец будет `vector(N)` с
-конкретным `N`; модель другой размерности потребует своей миграции.
+- `embedding_models` описывает, чем получен вектор: имя модели, ревизия,
+  размерность, способ объединения токенов, нормализация, предел входа, префикс.
+  Ревизия обязательна — это коммит репозитория модели. Будь она необязательной,
+  уникальность по этим полям пропускала бы одну и ту же модель дважды: два
+  `NULL` в PostgreSQL не равны.
+- `message_embeddings` и `chunk_embeddings` — две отдельные таблицы, а не одна с
+  двумя необязательными внешними ключами: у каждого вектора обязательно есть
+  владелец. Ключ `(владелец, model_id)` не даёт построить один и тот же вектор
+  дважды и позволяет хранить векторы нескольких моделей и ревизий рядом.
+- Вектор чанка удаляется вместе с чанком; сообщения не удаляются никогда.
+- Столбец `vector(768)`: размерность выбранной модели
+  `intfloat/multilingual-e5-base`. Модель другой размерности потребует своей
+  миграции со своими таблицами.
+- Модели таблиц лежат в `db/embedding_models.py`, отдельно от остальных: тип
+  pgvector тянет NumPy, без которого веб-приложение обязано запускаться.
 
 ## Индексы
 
@@ -200,10 +240,17 @@ messages ||--o{ chunk_messages
 | `chunk_messages(chunk_id, message_id)` PK | состав чанка |
 | `chunk_messages(message_id)` | в какие чанки входит сообщение |
 | `analysis_cache(namespace, key)` PK | чтение кеша по ключам |
+| `message_embeddings(message_id, model_id)` PK | какие сообщения ещё без вектора модели |
+| `chunk_embeddings(chunk_id, model_id)` PK | какие чанки ещё без вектора модели |
 
 Отдельных индексов `messages(channel_id)` и `messages(date)` нет: запросов только
 по каналу или только по дате у приложения нет, а первый столбец уникального
-индекса уже покрывает канал. Векторных индексов нет, пока нет векторов.
+индекса уже покрывает канал.
+
+Векторного индекса нет намеренно. Поиск идёт среди векторов одного пользователя,
+точный перебор занимает 28 мс по медиане, а индекс HNSW с фильтром по
+пользователю возвращал 60–70 % верных ближайших и почти удваивал объём. Замеры —
+в отчёте об эмбеддингах.
 
 ## Слои
 
@@ -354,6 +401,7 @@ python -m scripts.import_sqlite --data-dir data
 | `0001` | расширение `vector`, `users`, `channels`, `messages`, `legacy_messages` |
 | `0002` | `analysis_cache` |
 | `0003` | `chunk_sets`, `chunks`, `chunk_messages` |
+| `0004` | `embedding_models`, `message_embeddings`, `chunk_embeddings` с `vector(768)` |
 
 `alembic/env.py` берёт тот же `DATABASE_URL`, что и приложение, и работает через
 асинхронный драйвер: второй адрес не нужен.
@@ -367,9 +415,10 @@ alembic check             # модели и база совпадают
 ## pgvector
 
 Расширение включается первой миграцией: `CREATE EXTENSION IF NOT EXISTS vector`.
-Образ с закреплённой версией pgvector 0.8.6 на PostgreSQL 18. Столбцов типа
-`vector` пока нет. Оператор расстояния и надобность в приближённом индексе
-определяются замерами, они приведены в отчёте об эмбеддингах.
+Образ с закреплённой версией pgvector 0.8.6 на PostgreSQL 18. Столбцы `vector(768)`
+появляются в миграции `0004`. Используется оператор косинусного расстояния `<=>`:
+на нормализованных векторах он даёт тот же порядок, что скалярное произведение и
+евклидово расстояние, и остаётся верным для ненормализованных.
 
 ## Резервная копия
 
@@ -426,7 +475,11 @@ docker compose exec -T postgres \
 
 ## Что не сделано
 
-- Таблицы эмбеддингов и конвейер их расчёта.
-- README ещё описывает SQLite.
+- Рекомендованный в отчёте способ поиска (сообщения с учётом чанков) есть только
+  в скрипте замеров; в приложении поиска по эмбеддингам нет.
+- Раздел сравнения авторов по-прежнему хранит свои векторы как JSON в
+  `analysis_cache`, а не в `message_embeddings`.
 - В `.env.example` нужно добавить `DATABASE_URL` и `APP_TIMEZONE`.
+- Раздел README о запуске на телефоне через Termux не учитывает, что теперь
+  нужен доступный PostgreSQL.
 - Веб-интерфейс на реальной базе в браузере не проверялся.

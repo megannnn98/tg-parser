@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from alembic import context
+from db import embedding_models  # noqa: F401  (registers its tables)
 from db.engine import database_url
 from db.models import Base
 
