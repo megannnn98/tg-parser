@@ -1,0 +1,22 @@
+{"id": "q01", "user": "eval_user_01", "topic": "trade_unions", "query": "профсоюзы и забастовки рабочих", "pattern": "профсоюз|забастов|стачк"}
+{"id": "q02", "user": "eval_user_01", "topic": "migration", "query": "отношение к трудовым мигрантам", "pattern": "мигрант|миграц|диаспор"}
+{"id": "q03", "user": "eval_user_01", "topic": "religion", "query": "религия, церковь и вера в бога", "pattern": "религи|церк[ов]|верующ|атеи|православ|ислам|мусульман"}
+{"id": "q04", "user": "eval_user_01", "topic": "education", "query": "школа, учителя и образование", "pattern": "школ|учител|образовани|универ|студент"}
+{"id": "q05", "user": "eval_user_01", "topic": "women", "query": "положение женщин и феминизм", "pattern": "феминис|женщин|женск"}
+{"id": "q06", "user": "eval_user_01", "topic": "medicine", "query": "врачи, больницы и здоровье", "pattern": "врач|больниц|лекарств|поликлин|медицин"}
+{"id": "q07", "user": "eval_user_01", "topic": "cost_of_living", "query": "цены, зарплаты и стоимость жизни", "pattern": "зарплат|цен[аы]\\b|инфляц|зарабат"}
+{"id": "q08", "user": "eval_user_02", "topic": "capitalism", "query": "критика капитализма и эксплуатации", "pattern": "капитализ|капиталист|эксплуат"}
+{"id": "q09", "user": "eval_user_02", "topic": "war", "query": "война и мобилизация", "pattern": "мобилиз|\\bсво\\b|фронт[еау]?\\b|окоп|войн[аеуыо]"}
+{"id": "q10", "user": "eval_user_02", "topic": "stalin", "query": "оценка Сталина и сталинского периода", "pattern": "сталин"}
+{"id": "q11", "user": "eval_user_02", "topic": "west", "query": "США, НАТО и Запад", "pattern": "нато|\\bсша\\b|америк"}
+{"id": "q12", "user": "eval_user_02", "topic": "ukraine", "query": "события на Украине", "pattern": "украин"}
+{"id": "q13", "user": "eval_user_02", "topic": "bureaucracy", "query": "чиновники и государственный аппарат", "pattern": "чиновник|бюрократ|госаппарат"}
+{"id": "q14", "user": "eval_user_03", "topic": "elections", "query": "выборы и голосование", "pattern": "выбор(ы|ах|ов|ам)\\b|голосов"}
+{"id": "q15", "user": "eval_user_03", "topic": "nationalism", "query": "национализм и русские националисты", "pattern": "националис|нацик|нацист"}
+{"id": "q16", "user": "eval_user_03", "topic": "food", "query": "еда и готовка", "pattern": "готов[ил]|вкусн|\\bеда\\b|пицц|\\bсуп"}
+{"id": "q17", "user": "eval_user_03", "topic": "kprf", "query": "КПРФ и Зюганов", "pattern": "кпрф|зюганов"}
+{"id": "q18", "user": "eval_user_04", "topic": "work", "query": "работа, начальник и условия труда", "pattern": "начальник|зарплат|\\bсмен[аеуы]\\b|завод"}
+{"id": "q19", "user": "eval_user_04", "topic": "games_films", "query": "компьютерные игры и фильмы", "pattern": "\\bигр[аыу]\\b|фильм|сериал"}
+{"id": "q20", "user": "eval_user_05", "topic": "ussr", "query": "Советский Союз и его распад", "pattern": "ссср|советск"}
+{"id": "q21", "user": "eval_user_05", "topic": "tech", "query": "программирование и нейросети", "pattern": "нейросет|программ|python|chatgpt|\\bии\\b"}
+{"id": "q22", "user": "eval_user_05", "topic": "state", "query": "государство и власть", "pattern": "государств|власт"}

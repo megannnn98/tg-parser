@@ -13,3 +13,6 @@ data/tokenizer/
 /frontend/node_modules/
 /frontend/dist/
 /frontend/*.tsbuildinfo
+
+# Benchmark: local mapping of anonymous evaluation ids to real comments.
+/benchmarks/eval/*.local.json
