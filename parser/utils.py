@@ -1,16 +1,11 @@
 import argparse
 import re
-import unicodedata
 
 # Usernames and display names come from Telegram and end up in a file name:
 # keep letters of any alphabet, digits and underscores, drop everything else.
 _WHITESPACE = re.compile(r"\s+")
 _UNSAFE_FILENAME_CHARS = re.compile(r"[^\w]+")
 _REPEATED_UNDERSCORES = re.compile(r"_{2,}")
-
-def normalize(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text)
-    return text.lower()
 
 def parse_user_ref(value: str) -> int | str:
     ref = value.strip().lstrip("@")

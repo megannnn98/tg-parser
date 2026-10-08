@@ -10,11 +10,8 @@ API_HASH = os.getenv("API_HASH")
 
 CHANNELS_PATH = Path(os.getenv("CHANNELS_PATH", "channels.json"))
 CHANNELS = json.loads(CHANNELS_PATH.read_text())
+# Model caches and logs; the comments themselves live in PostgreSQL (DATABASE_URL).
 DATA_DIR = os.getenv("DATA_DIR", "data")
-DB_PATH = os.getenv("DB_PATH", os.path.join(DATA_DIR, "app.db"))
-# Unset: user-comments names the file after the user (<username>_<tg_id>.db).
-# Set: that exact file is used instead.
-USER_DB_PATH = os.getenv("USER_DB_PATH")
 LIMIT = int(os.getenv("LIMIT", 1000))
 # Time zone of the activity charts: the hour and the day a comment was written in.
 APP_TIMEZONE = os.getenv("APP_TIMEZONE", "Asia/Almaty")

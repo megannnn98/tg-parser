@@ -384,6 +384,19 @@ def test_user_comments_rejects_empty_channels(run_db):
     run_db(scenario)
 
 
+def test_user_comments_takes_the_refresh_flag_from_the_command_line(monkeypatch):
+    import sys
+
+    from parser.utils import parse_args
+
+    monkeypatch.setattr(sys, "argv", ["main.py", "user-comments", "@vasya"])
+    assert parse_args().refresh_text is False
+    monkeypatch.setattr(
+        sys, "argv", ["main.py", "user-comments", "@vasya", "--refresh-text"]
+    )
+    assert parse_args().refresh_text is True
+
+
 # --- collect -----------------------------------------------------------------
 
 
