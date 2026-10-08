@@ -1,0 +1,807 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Telegram user profiles",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/profiles": {
+      "get": {
+        "summary": "List Profiles",
+        "operationId": "list_profiles",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Profile"
+                  },
+                  "type": "array",
+                  "title": "Response List Profiles"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/channels": {
+      "get": {
+        "summary": "Get Channels",
+        "operationId": "get_channels",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save Channels List",
+        "operationId": "save_channels_list",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChannelsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/collect": {
+      "post": {
+        "summary": "Start Collect",
+        "operationId": "start_collect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStarted"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/collect/{job_id}/status": {
+      "get": {
+        "summary": "Collect Status",
+        "operationId": "collect_status",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/collect/{job_id}/cancel": {
+      "post": {
+        "summary": "Cancel Collect",
+        "operationId": "cancel_collect",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobCancelled"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{db_name}": {
+      "get": {
+        "summary": "Get User",
+        "operationId": "get_user",
+        "parameters": [
+          {
+            "name": "db_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Db Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{db_name}/comments.txt": {
+      "get": {
+        "summary": "Export User Comments",
+        "operationId": "export_user_comments",
+        "parameters": [
+          {
+            "name": "db_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Db Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{db_name}/political-coords": {
+      "post": {
+        "summary": "Analyze Political",
+        "operationId": "analyze_political",
+        "parameters": [
+          {
+            "name": "db_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Db Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoliticalCoords"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AxisCounts": {
+        "properties": {
+          "left_count": {
+            "type": "integer",
+            "title": "Left Count"
+          },
+          "right_count": {
+            "type": "integer",
+            "title": "Right Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "left_count",
+          "right_count"
+        ],
+        "title": "AxisCounts"
+      },
+      "ChannelShare": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count"
+          },
+          "percent": {
+            "type": "number",
+            "title": "Percent"
+          },
+          "color": {
+            "type": "string",
+            "title": "Color"
+          },
+          "dasharray": {
+            "type": "string",
+            "title": "Dasharray"
+          },
+          "dashoffset": {
+            "type": "number",
+            "title": "Dashoffset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "message_count",
+          "percent",
+          "color",
+          "dasharray",
+          "dashoffset"
+        ],
+        "title": "ChannelShare"
+      },
+      "ChannelStatus": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "saved": {
+            "type": "integer",
+            "title": "Saved"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "status",
+          "saved",
+          "error"
+        ],
+        "title": "ChannelStatus"
+      },
+      "ChannelsRequest": {
+        "properties": {
+          "channels_text": {
+            "type": "string",
+            "title": "Channels Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channels_text"
+        ],
+        "title": "ChannelsRequest"
+      },
+      "ChannelsResponse": {
+        "properties": {
+          "channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Channels"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channels"
+        ],
+        "title": "ChannelsResponse"
+      },
+      "CollectRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "CollectRequest"
+      },
+      "DayCount": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "count"
+        ],
+        "title": "DayCount"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HourCount": {
+        "properties": {
+          "hour": {
+            "type": "integer",
+            "title": "Hour"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hour",
+          "count"
+        ],
+        "title": "HourCount"
+      },
+      "JobCancelled": {
+        "properties": {
+          "cancelled": {
+            "type": "boolean",
+            "title": "Cancelled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "cancelled"
+        ],
+        "title": "JobCancelled"
+      },
+      "JobStarted": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id"
+        ],
+        "title": "JobStarted"
+      },
+      "JobStatus": {
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "title": "Job Id"
+          },
+          "user_ref": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "User Ref"
+          },
+          "total_channels": {
+            "type": "integer",
+            "title": "Total Channels"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "resolved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedUser"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelStatus"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "saved_total": {
+            "type": "integer",
+            "title": "Saved Total"
+          },
+          "db_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Db Name"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "job_id",
+          "user_ref",
+          "total_channels",
+          "state",
+          "resolved",
+          "channels",
+          "saved_total",
+          "db_name",
+          "error"
+        ],
+        "title": "JobStatus"
+      },
+      "PoliticalCoords": {
+        "properties": {
+          "total_messages": {
+            "type": "integer",
+            "title": "Total Messages"
+          },
+          "signal_count": {
+            "type": "integer",
+            "title": "Signal Count"
+          },
+          "bars": {
+            "type": "string",
+            "title": "Bars"
+          },
+          "axes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AxisCounts"
+            },
+            "type": "object",
+            "title": "Axes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_messages",
+          "signal_count",
+          "bars",
+          "axes"
+        ],
+        "title": "PoliticalCoords"
+      },
+      "Profile": {
+        "properties": {
+          "db_name": {
+            "type": "string",
+            "title": "Db Name"
+          },
+          "tg_id": {
+            "type": "integer",
+            "title": "Tg Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "display_username": {
+            "type": "string",
+            "title": "Display Username"
+          },
+          "total_messages": {
+            "type": "integer",
+            "title": "Total Messages"
+          },
+          "channel_count": {
+            "type": "integer",
+            "title": "Channel Count"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelShare"
+            },
+            "type": "array",
+            "title": "Channels"
+          }
+        },
+        "type": "object",
+        "required": [
+          "db_name",
+          "tg_id",
+          "username",
+          "display_name",
+          "display_username",
+          "total_messages",
+          "channel_count",
+          "channels"
+        ],
+        "title": "Profile"
+      },
+      "ResolvedUser": {
+        "properties": {
+          "tg_id": {
+            "type": "integer",
+            "title": "Tg Id"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tg_id",
+          "username",
+          "display_name"
+        ],
+        "title": "ResolvedUser"
+      },
+      "UserDetail": {
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/Profile"
+          },
+          "hourly_activity": {
+            "items": {
+              "$ref": "#/components/schemas/HourCount"
+            },
+            "type": "array",
+            "title": "Hourly Activity"
+          },
+          "daily_activity": {
+            "items": {
+              "$ref": "#/components/schemas/DayCount"
+            },
+            "type": "array",
+            "title": "Daily Activity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile",
+          "hourly_activity",
+          "daily_activity"
+        ],
+        "title": "UserDetail"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

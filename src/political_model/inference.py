@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import torch
 from transformers import AutoTokenizer
 
-if TYPE_CHECKING:
-    from collections.abc import Mapping
-
 from src.political_model.model import AXIS_NAMES, DEVICE, PoliticalBertRegressor
 
 
-def load_model(model_path: Path, model_name: str = "DeepPavlov/rubert-base-cased") -> PoliticalBertRegressor:
+def load_model(model_path: Path, model_name: str = "DeepPavlov/rubert-base-cased", tokenizer_path: Path | None = None) -> PoliticalBertRegressor:
     if not model_path.exists():
         raise FileNotFoundError(f"Model file not found: {model_path}")
     try:
         model = PoliticalBertRegressor(model_name=model_name)
         model.load_state_dict(torch.load(model_path, weights_only=True, map_location=DEVICE))
+
+        # Загрузить токенизатор из сохраненной директории, если доступно
+        if tokenizer_path and tokenizer_path.exists():
+            model.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+
         model.to(DEVICE)
         model.eval()
         return model
@@ -31,7 +32,10 @@ def predict(text: str, model: PoliticalBertRegressor | None = None, model_path: 
     if model is None:
         if model_path is None:
             model_path = Path("data/model.pt")
-        model = load_model(model_path)
+            tokenizer_path = Path("data/tokenizer")
+        else:
+            tokenizer_path = model_path.parent / "tokenizer"
+        model = load_model(model_path, tokenizer_path=tokenizer_path)
 
     predictions = model.predict_single(text)
     return {axis: max(-1.0, min(1.0, predictions[axis])) for axis in AXIS_NAMES}
@@ -41,7 +45,10 @@ def predict_batch(texts: list[str], model: PoliticalBertRegressor | None = None,
     if model is None:
         if model_path is None:
             model_path = Path("data/model.pt")
-        model = load_model(model_path)
+            tokenizer_path = Path("data/tokenizer")
+        else:
+            tokenizer_path = model_path.parent / "tokenizer"
+        model = load_model(model_path, tokenizer_path=tokenizer_path)
 
     model.eval()
     with torch.no_grad():

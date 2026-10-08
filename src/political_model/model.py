@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import torch
 import torch.nn as nn
 from transformers import AutoModel, AutoTokenizer
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -28,7 +23,7 @@ class PoliticalBertRegressor(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         hidden_size = self.bert.config.hidden_size
 
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(0.2)
         self.regression_heads = nn.ModuleDict({
             axis: nn.Linear(hidden_size, 1) for axis in AXIS_NAMES
         })
@@ -43,8 +38,14 @@ class PoliticalBertRegressor(nn.Module):
                 max_length=512,
                 return_tensors="pt",
             )
-            input_ids = encoded["input_ids"].to(DEVICE)
-            attention_mask = encoded["attention_mask"].to(DEVICE)
+            input_ids = encoded["input_ids"]
+            attention_mask = encoded["attention_mask"]
+
+        if input_ids is None or attention_mask is None:
+            raise ValueError("Either texts or (input_ids, attention_mask) must be provided")
+
+        input_ids = input_ids.to(DEVICE)
+        attention_mask = attention_mask.to(DEVICE)
 
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
         cls_embedding = outputs.last_hidden_state[:, 0, :]
