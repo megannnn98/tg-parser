@@ -1,11 +1,17 @@
 # telegram-comments
 
-Собирает комментарии из discussion-чатов, привязанных к Telegram-каналам, и складывает их в SQLite.
+Собирает комментарии из discussion-чатов, привязанных к Telegram-каналам, и складывает их в PostgreSQL.
+
+Схема базы, перенос данных из SQLite и резервные копии описаны в
+[docs/postgresql-migration.md](docs/postgresql-migration.md), исследование нарезки
+комментариев и эмбеддингов — в
+[docs/embedding-chunking-research.md](docs/embedding-chunking-research.md).
 
 ## Локальные эмбеддинги и сравнение авторов
 
 На странице пользователя раздел «Похожие высказывания авторов» создаёт эмбеддинги
-самих комментариев из локальных SQLite-баз всех собранных авторов. Нажмите
+самих комментариев всех пользователей, чьи комментарии собраны режимом
+`user-comments`. Нажмите
 «Создать эмбеддинги и сравнить». Панель показывает чтение истории, создание векторов
 и сравнение авторов, текущую операцию, количество обработанных текстов и кеш.
 
@@ -21,8 +27,9 @@
 Для каждого уникального непустого текста сохраняется нормализованный вектор из
 768 чисел. Длинные комментарии обрабатываются частями до 512 токенов с префиксом
 `query:`; векторы частей усредняются с весом по длине и нормализуются по L2.
-Эмбеддинги хранятся как JSON-массивы в `DATA_DIR/position-analysis.sqlite3`, таблица
-`cache`, namespace `comment-embeddings:<версия модели>`. Исходные БД не меняются.
+Эмбеддинги этого раздела хранятся как JSON-массивы в PostgreSQL, таблица
+`analysis_cache`, namespace `comment-embeddings:<версия модели>`. Исходные комментарии
+не меняются.
 Модель, размерность, путь и число векторов показаны в раскрывающемся блоке панели.
 
 Рейтинг строится по косинусному сходству нормализованных средних векторов уникальных
@@ -42,27 +49,42 @@ OpenRouter.
 
 ## Подготовка
 
-1. Положите API-креды Telegram в `.env` (и в `.env.docker` для контейнера):
+1. Положите настройки в `.env` (для запуска с хоста) и в `.env.docker` (для контейнера):
 
 ```
 API_ID=1234567
 API_HASH=0123456789abcdef0123456789abcdef
 LIMIT=1000
-DB_PATH=data/app.db
 LOG_LEVEL=INFO
+DATABASE_URL=postgresql+asyncpg://telegram:telegram@127.0.0.1:5435/telegram_comments
+APP_TIMEZONE=Asia/Almaty
 ```
 
-2. Соберите образ:
+   В контейнере `DATABASE_URL` подставляет `docker-compose.yml` (хост `postgres`), поэтому в
+   `.env.docker` он не обязателен. Пароль `telegram` годится только для локальной базы,
+   порт которой открыт на `127.0.0.1`; другой задаётся переменной `POSTGRES_PASSWORD`.
+
+2. Соберите образ и поднимите PostgreSQL с pgvector:
 
 ```
-docker build -f ci/Dockerfile -t telegram-parser .
+docker compose build app
+docker compose up -d postgres
 ```
 
-3. Один раз войдите интерактивно — Pyrogram спрашивает номер телефона и код, а
+3. Создайте схему базы:
+
+```
+./scripts/run.sh migrate          # то же, что alembic upgrade head
+```
+
+   Эту команду нужно повторять после обновления кода: новые миграции лежат в
+   `alembic/versions`.
+
+4. Один раз войдите в Telegram интерактивно — Pyrogram спрашивает номер телефона и код, а
    `scripts/run.sh` запускается без TTY, поэтому первый вход нужно сделать вручную:
 
 ```
-docker run --rm -it --user "$(id -u):$(id -g)" --env-file .env.docker -v "$PWD:/app" telegram-parser collect
+docker run --rm -it --user "$(id -u):$(id -g)" --env-file .env.docker -v "$PWD:/app" --entrypoint python telegram-parser -m scripts.login
 ```
 
 Сессия сохраняется в `my_session.session`; после этого `./scripts/run.sh <режим>` работает
@@ -97,95 +119,73 @@ Code sent via APP. Resend would use SMS, allowed after 60 s.
 
 ## Сбор комментариев одного пользователя по всем каналам
 
-Пишет только его комментарии в отдельную БД — по одному файлу на пользователя. Имя файла
-строится из данных, которые вернул Telegram, и всегда заканчивается на `tg_id`:
-
-| Что известно о пользователе | Имя файла |
-|---|---|
-| есть `@username` | `<DATA_DIR>/hryukalo_555123456.db` |
-| ника нет, есть имя «Хрюкало Офф» | `<DATA_DIR>/хрюкало_офф_555123456.db` |
-| ни ника, ни имени | `<DATA_DIR>/555123456.db` |
-
-Ник в приоритете над отображаемым именем. Имя приводится к нижнему регистру, пробелы
-заменяются на `_`, всё, кроме букв (любого алфавита), цифр и `_`, отбрасывается — эмодзи и
-пунктуация в путь не попадают.
-
-Принимает и `@username`, и числовой `tg_id` — оба варианта дают один и тот же файл, потому
-что имя берётся из ответа Telegram, а не из того, что вы набрали.
-
-Фильтрация выполняется на стороне Telegram (`search_messages(from_user=...)`), поэтому
-забирается вся история пользователя в каждом discussion-чате — `LIMIT` в этом режиме не
-применяется. Повторные запуски идемпотентны: `UNIQUE(channel, message_id)` не даёт записать
-уже существующий комментарий второй раз.
-
-### Пример: собрать @Mega_Palez
-
 ```
 ./scripts/run.sh user-comments @Mega_Palez
 ```
 
-Username приводится к нижнему регистру и обрезается до `[a-z0-9_]`, поэтому этот запуск
-пишет в `data/mega_palez_<tg_id>.db`. Ожидаемый вывод (id будет реальный, тот, что вернёт
-Telegram):
+Режим находит пользователя, записывает его в таблицу `users`, проходит каналы из
+`channels.json` и сохраняет его комментарии в общую таблицу `messages`. Отдельный файл на
+пользователя больше не создаётся.
+
+Принимает и `@username`, и числовой `tg_id`. Пользователь, которого уже собирали,
+повторно в Telegram не ищется: запросы поиска по нику Telegram ограничивает на часы.
+
+Фильтрация выполняется на стороне Telegram (`search_messages(from_user=...)`), поэтому
+забирается вся история пользователя в каждом discussion-чате — `LIMIT` в этом режиме не
+применяется.
+
+Вывод:
 
 ```
-2026-08-01 10:15:02,113 | INFO     | user_collector | Resolved Mega_Palez -> tg_id=123456789, username=Mega_Palez
-2026-08-01 10:15:03,455 | INFO     | user_collector | [rud01vb] fetched 37, new 37
-2026-08-01 10:15:04,802 | INFO     | user_collector | [d_tyazhkun] fetched 12, new 12
-2026-08-01 10:15:04,806 | INFO     | measure_time   | [collect_user_comments] took 3.104s
-2026-08-01 10:15:04,807 | INFO     | main           | Saved 49 new comments of Mega_Palez to data/mega_palez_123456789.db
+Resolved user:
+tg_id=123456789
+username=Mega_Palez
+
+channels scanned: 143
+channels failed: 0
+messages fetched: 1766
+new messages: 131
+duplicates: 1635
 ```
 
-Числовой `tg_id` можно узнать из строки `Resolved ...` — он же входит в имя файла.
+Повторный запуск дозабирает только новое: комментарий определяется парой «канал и номер
+сообщения», и уже сохранённый второй раз не записывается. Текст сохранённого комментария
+не перезаписывается; чтобы взять его из Telegram заново, добавьте `--refresh-text`.
 
 Посмотреть, что записалось:
 
 ```
-sqlite3 data/mega_palez_123456789.db \
-  "SELECT channel, COUNT(*) FROM user_messages GROUP BY channel ORDER BY 2 DESC;"
-
-sqlite3 data/mega_palez_123456789.db \
-  "SELECT date, text FROM user_messages ORDER BY date DESC LIMIT 5;"
-```
-
-Запустите ту же команду повторно, чтобы дозабрать только новые комментарии — по каждому
-каналу будет `new 0`, а в последней строке `Saved 0 new comments`:
-
-```
-./scripts/run.sh user-comments @Mega_Palez
-```
-
-Когда id известен, можно обращаться к тому же файлу по id — так же работает и для
-пользователей, у которых username нет вообще:
-
-```
-./scripts/run.sh user-comments 123456789        # -> data/mega_palez_123456789.db
+docker compose exec postgres psql -U telegram -d telegram_comments -c "
+  SELECT c.username, count(*)
+  FROM messages m
+  JOIN users u ON u.id = m.user_id
+  JOIN channels c ON c.id = m.channel_id
+  WHERE u.tg_id = 123456789
+  GROUP BY c.username ORDER BY 2 DESC;"
 ```
 
 Каналы без привязанного обсуждения логируются и пропускаются
 (`Channel <name> has no linked discussion`). Канал, упавший по любой другой причине
 (неверный username, нет доступа, длинный `FloodWait`), логируется с трейсбеком и
-пропускается, а проход продолжается; в конце запуск сообщает `N of M channels failed`.
-Мёртвая сессия (отозвана, auth key не зарегистрирован, аккаунт деактивирован) наоборот
-прерывает проход — в логе указано, сколько строк уже успело закоммититься.
+пропускается, а проход продолжается; уже сохранённое остаётся. Мёртвая сессия (отозвана,
+auth key не зарегистрирован, аккаунт деактивирован) наоборот прерывает проход — в логе
+указано, сколько строк уже успело сохраниться.
 
-Задайте `USER_DB_PATH`, чтобы писать в один фиксированный файл, игнорируя имя по пользователю.
+## Сбор комментариев каналов
+
+```
+./scripts/run.sh collect
+```
+
+Читает последние `LIMIT` сообщений обсуждения каждого канала и сохраняет их вместе с
+авторами. До восьми каналов читаются одновременно, каждый пишет пакетами по 500
+сообщений. Авторы, встреченные так, попадают в `users`, но профилями в веб-интерфейсе
+становятся только те, по кому запускали `user-comments`.
 
 ## Веб-профиль пользователя
 
-Веб-интерфейс ничего не скачивает из Telegram и ничего не пишет в SQLite. Он только
-читает уже готовые базы пользователей из `DATA_DIR`.
-
-Сначала соберите комментарии нужного пользователя:
-
-```
-./scripts/run.sh user-comments @Mega_Palez
-```
-
-После успешного сбора в `data/` появится файл вида
-`mega_palez_<tg_id>.db`. Затем соберите фронтенд (один раз и после каждого
-изменения в `frontend/`; нужен Node.js 22.13+, на Arch: `sudo pacman -S nodejs npm`)
-и запустите web UI:
+Веб-интерфейс читает PostgreSQL. Соберите фронтенд (один раз и после каждого изменения в
+`frontend/`; нужен Node.js 22.13+, на Arch: `sudo pacman -S nodejs npm`) и запустите:
 
 ```
 (cd frontend && npm ci && npm run build)
@@ -198,63 +198,35 @@ JSON API живёт под `/api/v1` (схема — `http://localhost:8000/docs
 скачать артефакт `frontend-dist` последнего прогона GitHub Actions и распаковать его в
 `frontend/dist`.
 
-Откройте в браузере:
+Откройте в браузере `http://localhost:8000`. На главной странице — пользователи, чьи
+комментарии собраны. Страница пользователя (`/users/<tg_id>`) показывает ник, `tg_id`,
+количество сообщений и каналов, распределение по каналам и активность по часам, дням и
+дням недели. Пользователь адресуется по `tg_id`: ник может смениться.
+
+Часы и дни активности считаются в поясе `APP_TIMEZONE`.
+
+Если порт `8000` занят: `WEB_PORT=8010 ./scripts/run.sh web`.
+
+Без Docker:
 
 ```
-http://localhost:8000
-```
-
-На главной странице будет список всех найденных user DB. Нажмите на нужного пользователя,
-чтобы открыть профиль с ником, `tg_id`, количеством сообщений, количеством каналов,
-круговой диаграммой и таблицей `канал -> сообщения -> доля`.
-
-Если порт `8000` занят, поменяйте host-порт:
-
-```
-WEB_PORT=8010 ./scripts/run.sh web
-```
-
-Тогда адрес будет:
-
-```
-http://localhost:8010
-```
-
-Docker-режим берёт `DATA_DIR` из `.env.docker`. Если базы лежат не в `data/`, задайте там
-нужный каталог, например:
-
-```
-DATA_DIR=data
-```
-
-Без Docker можно запустить так:
-
-```
-DATA_DIR=data .venv/bin/python -m uvicorn web.app:app --host 127.0.0.1 --port 8000
-```
-
-Для другого локального порта:
-
-```
-DATA_DIR=data .venv/bin/python -m uvicorn web.app:app --host 127.0.0.1 --port 8010
+.venv/bin/python -m uvicorn web.app:app --host 127.0.0.1 --port 8000
 ```
 
 Быстрая проверка из терминала:
 
 ```
 curl -sS http://127.0.0.1:8000/api/v1/profiles
+curl -sS http://127.0.0.1:8000/api/v1/users/123456789/comments.txt
 ```
 
-Если страница пустая, проверьте:
+Если список пуст, проверьте, что миграции применены и что пользователь собран:
 
 ```
-find data -maxdepth 1 -name "*.db" -print
-sqlite3 data/mega_palez_<tg_id>.db \
-  "SELECT channel, COUNT(*) FROM user_messages GROUP BY channel ORDER BY 2 DESC;"
+docker compose exec postgres psql -U telegram -d telegram_comments -c "
+  SELECT tg_id, username, profile_collected_at FROM users
+  WHERE profile_collected_at IS NOT NULL;"
 ```
-
-`app.db` в списке профилей не показывается: это общая база режима `collect`, а web UI
-ищет только таблицу `user_messages`.
 
 ## Фронтенд
 
@@ -569,42 +541,80 @@ tg_id     | username  | name        | found in | channels
 - **Риск `FloodWait`.** Резолв десятков имён подряд Telegram может притормозить.
   Pyrogram сам ждёт при задержке до 60 с, дольше — кандидат пропускается с логом.
 
-## Запуск остальных режимов
+## Чанки и эмбеддинги
+
+Нарезка и эмбеддинги строятся из уже сохранённых комментариев; Telegram для этого не
+нужен, и смена способа нарезки или модели не требует скачивать комментарии заново.
 
 ```
-./scripts/run.sh collect
+# чанки одной стратегии; несколько стратегий и наборов параметров хранятся рядом
+python -m scripts.build_chunks --strategy token_budget \
+    --params '{"max_tokens": 256, "overlap": 0, "same_channel": true}'
+
+# эмбеддинги сообщений и чанков набора
+python -m scripts.embed --messages
+python -m scripts.embed --chunk-set 1
 ```
+
+Повторный запуск считает только недостающее. `--force` пересобирает всё. Стратегии:
+`message`, `fixed_messages`, `token_budget`, `time_window`, `hybrid`, `hybrid_short`;
+их параметры описаны в `chunking/strategies.py`. Нужны PyTorch и Transformers.
+
+## Замеры
+
+```
+python -m benchmarks.corpus_stats                      # размеры сообщений
+python -m benchmarks.chunking_benchmark                # сравнение стратегий нарезки
+python -m benchmarks.chunking_benchmark --postgres     # плюс размер и скорость в pgvector
+python -m benchmarks.chunking_benchmark --compare-models
+python -m benchmarks.chunking_benchmark --sample 300 --only "C tokens 256"   # быстрая проверка
+python -m benchmarks.postgres_benchmark                # запись и чтение PostgreSQL
+```
+
+Сравнение стратегий читает базу и считает эмбеддинги в `data/benchmark`, в рабочие
+таблицы ничего не пишет. Ему нужен файл `benchmarks/eval/mapping.local.json`, которого
+нет в репозитории: см. `benchmarks/eval/README.md`.
 
 ## Данные
 
-`data/app.db` (режим `collect`):
+Все данные лежат в одной базе PostgreSQL:
 
 ```
-users(tg_id PK, username)
-channels(name PK)
-messages(id PK, user -> users.tg_id, channel -> channels.name, text, date)
+users(id, tg_id UNIQUE, username, first_name, last_name, profile_collected_at)
+channels(id, username UNIQUE, telegram_chat_id, linked_chat_id)
+messages(id, tg_message_id, user_id -> users, channel_id -> channels, text, date,
+         UNIQUE(channel_id, tg_message_id))
 ```
 
-БД одного пользователя (режим `user-comments`):
+Текст хранится таким, каким пришёл из Telegram, дата — с часовым поясом. Чанки,
+эмбеддинги и кеш анализа позиций — производные таблицы, они пересчитываются из
+`messages`. Полная схема — в [docs/postgresql-migration.md](docs/postgresql-migration.md).
+
+Данные из старых файлов SQLite переносятся один раз:
 
 ```
-user_messages(id PK, tg_id, username, channel, message_id, text, date,
-              UNIQUE(channel, message_id))
+python -m scripts.import_sqlite --data-dir data
 ```
 
-В обеих текст хранится после `normalize()` — Unicode NFKC плюс приведение к нижнему регистру.
+### Резервная копия
+
+```
+docker compose exec -T postgres pg_dump -U telegram -d telegram_comments -Fc > telegram_comments.dump
+docker compose exec -T postgres pg_restore -U telegram -d telegram_comments --clean --if-exists < telegram_comments.dump
+```
 
 ## Переменные окружения
 
 | Переменная | По умолчанию | Значение |
 |---|---|---|
 | `API_ID`, `API_HASH` | — | API-креды Telegram, обязательны |
-| `DATA_DIR` | `data` | Каталог для баз данных |
-| `DB_PATH` | `<DATA_DIR>/app.db` | База для `collect` |
-| `USER_DB_PATH` | не задана | Не задана: `user-comments` называет файл по пользователю. Задана: используется ровно этот файл |
+| `DATABASE_URL` | — | Адрес PostgreSQL, `postgresql+asyncpg://user:password@host:5432/database`; обязателен |
+| `APP_TIMEZONE` | `Asia/Almaty` | Пояс, в котором считаются часы и дни активности |
+| `DATA_DIR` | `data` | Каталог для весов моделей и журналов |
 | `CHANNELS_PATH` | `channels.json` | Файл со списком каналов (его же дописывает `discover-channels`) |
 | `LIMIT` | `1000` | Сообщений на источник для `collect`, `find-user` (история) и `discover-channels`; в `user-comments` не используется |
 | `DISCOVER_TARGET` | `200` | На каком размере списка `discover-channels` прекращает поиск |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | `telegram`, `telegram`, `telegram_comments`, `5435` | Параметры контейнера PostgreSQL |
 | `LOG_LEVEL` | `INFO` | Уровень логирования |
 
 ## Тесты
@@ -612,6 +622,17 @@ user_messages(id PK, tg_id, username, channel, message_id, text, date,
 ```
 ./scripts/tests.sh
 ```
+
+Скрипт поднимает отдельную базу `postgres-test` и запускает все тесты в Docker. Локально:
+
+```
+docker compose --profile test up -d postgres-test
+TEST_DATABASE_URL=postgresql+asyncpg://telegram:telegram@127.0.0.1:5436/telegram_comments_test \
+    python -m pytest
+```
+
+Тесты из `tests/postgres` удаляют схему в своей базе, поэтому её имя обязано
+оканчиваться на `_test`. Без `TEST_DATABASE_URL` они пропускаются.
 
 ## Каналы для сканирования
 

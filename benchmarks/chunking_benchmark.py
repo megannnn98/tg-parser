@@ -163,6 +163,7 @@ class Corpus:
         if use_cache and vectors_path.exists():
             return np.load(vectors_path), json.loads(meta_path.read_text())["seconds"]
         texts = [SEPARATOR.join(self.text[m] for m in unit) for unit in units]
+        self.encoder.load()
         started = time.perf_counter()
         vectors = self.encoder.encode_passages(texts)
         seconds = time.perf_counter() - started
@@ -400,7 +401,7 @@ def postgres_measurements(indexes: list[Index], queries, query_vectors,
     return results
 
 
-def compare_models(comments, names: list[str], cache_dir: Path) -> dict:
+def compare_models(comments, names: list[str], cache_dir: Path, partial: bool) -> dict:
     """Message-level and one chunked variant per model: quality, speed, memory."""
     import torch
 
@@ -410,7 +411,7 @@ def compare_models(comments, names: list[str], cache_dir: Path) -> dict:
         torch.cuda.reset_peak_memory_stats()
         encoder = E5Encoder(SPECS[name], cache_dir=cache_dir)
         corpus = Corpus(comments, encoder)
-        queries = load_queries(comments)
+        queries = load_queries(comments, partial=partial)
         query_vectors = encoder.encode_queries([q.query for q in queries])
         row = {"dimensions": encoder.spec.dimensions,
                "revision": encoder.spec.revision,
@@ -437,6 +438,8 @@ def main() -> None:
     parser.add_argument("--no-cache", action="store_true",
                         help="embed again, to measure embedding time")
     parser.add_argument("--postgres", action="store_true")
+    parser.add_argument("--sample", type=int, default=None, metavar="N",
+                        help="smoke run: only the first N comments of each user")
     parser.add_argument("--only", default=None,
                         help="regex of variant names to run; the message "
                         "baseline is always included")
@@ -445,15 +448,27 @@ def main() -> None:
 
     OUT.mkdir(parents=True, exist_ok=True)
     comments = load_comments(sync_engine())
+    if args.sample:
+        taken: dict[int, int] = {}
+        sampled = []
+        for comment in comments:
+            taken[comment.tg_id] = taken.get(comment.tg_id, 0) + 1
+            if taken[comment.tg_id] <= args.sample:
+                sampled.append(comment)
+        comments = sampled
+    partial = bool(args.sample)
     if args.compare_models:
-        results = compare_models(comments, list(SPECS), Path(args.cache_dir))
-        (OUT / "models.json").write_text(json.dumps(results, indent=1))
+        results = compare_models(
+            comments, list(SPECS), Path(args.cache_dir), partial
+        )
+        name = "models.sample.json" if partial else "models.json"
+        (OUT / name).write_text(json.dumps(results, indent=1))
         print(json.dumps(results, indent=1))
         return
 
     encoder = E5Encoder(SPECS[args.model], cache_dir=Path(args.cache_dir))
     corpus = Corpus(comments, encoder)
-    queries = load_queries(comments)
+    queries = load_queries(comments, partial=partial)
     query_vectors = encoder.encode_queries([q.query for q in queries])
     limit = encoder.content_token_limit
 
@@ -510,7 +525,8 @@ def main() -> None:
         "relevant_messages": sum(len(q.relevant) for q in queries),
         "variants": results,
     }
-    (OUT / "results.json").write_text(json.dumps(summary, indent=1, ensure_ascii=False))
+    name = "results.sample.json" if partial else "results.json"
+    (OUT / name).write_text(json.dumps(summary, indent=1, ensure_ascii=False))
     print_table(summary)
 
 
@@ -520,9 +536,14 @@ def print_table(summary: dict) -> None:
           f"| NDCG@10 | R@{CONTEXT_BUDGET}tok | rel.tok@5 | embed s | vectors MB |")
     print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for name, row in summary["variants"].items():
+        # Multi-level rows mix two unit sizes: no single size to report.
+        sizes = (
+            f"{row['messages_per_unit']:.1f} | {row['tokens_p50']:.0f} "
+            f"| {row['tokens_p90']:.0f}"
+            if "tokens_p50" in row else "– | – | –"
+        )
         print(
-            f"| {name} | {row['units']} | {row.get('messages_per_unit', 0):.1f} "
-            f"| {row.get('tokens_p50', 0):.0f} | {row.get('tokens_p90', 0):.0f} "
+            f"| {name} | {row['units']} | {sizes} "
             f"| {row['recall@5']:.3f} | {row['recall@10']:.3f} | {row['mrr']:.3f} "
             f"| {row['ndcg@10']:.3f} | {row[budget]:.3f} "
             f"| {row['relevant_tokens@5']:.2f} | {row['embed_seconds']:.1f} "

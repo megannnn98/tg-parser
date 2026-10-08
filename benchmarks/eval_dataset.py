@@ -26,9 +26,17 @@ class EvalQuery:
 
 
 def load_queries(
-    comments: list[Comment], dataset: Path = DATASET, mapping: Path = MAPPING
+    comments: list[Comment],
+    dataset: Path = DATASET,
+    mapping: Path = MAPPING,
+    partial: bool = False,
 ) -> list[EvalQuery]:
-    """Resolves the anonymous ids against the comments stored now."""
+    """Resolves the anonymous ids against the given comments.
+
+    Every judged comment must be among them, unless `partial`: a run on a
+    sample then keeps the judgments that fall into the sample and drops the
+    queries left without any.
+    """
     if not mapping.exists():
         raise SystemExit(
             f"{mapping} is missing: it maps the anonymous ids of {dataset.name} to "
@@ -48,10 +56,14 @@ def load_queries(
             ref = local["messages"][anonymous]
             message_id = by_key.get((ref["channel"], ref["tg_message_id"]))
             if message_id is None:
+                if partial:
+                    continue
                 raise SystemExit(
                     f"{item['id']}: {anonymous} is not among the stored comments"
                 )
             relevant.add(message_id)
+        if not relevant:
+            continue
         queries.append(
             EvalQuery(
                 id=item["id"],

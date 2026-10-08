@@ -64,3 +64,20 @@ def test_missing_local_mapping_is_explained(tmp_path):
 
     with pytest.raises(SystemExit, match="not in git"):
         load_queries(COMMENTS, dataset, mapping)
+
+
+def test_partial_run_keeps_what_falls_into_the_sample(tmp_path):
+    dataset, mapping = _files(
+        tmp_path,
+        {
+            "eval_msg_0001": {"channel": "news", "tg_message_id": 10},
+            "eval_msg_0002": {"channel": "news", "tg_message_id": 99},
+        },
+    )
+
+    (query,) = load_queries(COMMENTS, dataset, mapping, partial=True)
+    nothing_left = load_queries(COMMENTS[1:], dataset, mapping, partial=True)
+
+    assert query.relevant == {501}
+    # A query with no judged comment in the sample cannot be scored.
+    assert nothing_left == []

@@ -91,6 +91,10 @@ class E5Encoder:
     def encode_queries(self, texts: list[str]):
         return self._encode([self.spec.query_prefix + text for text in texts])
 
+    def load(self) -> None:
+        """Loads the weights now, so that a timed encode does not include it."""
+        self._load_model()
+
     def _load_model(self):
         if self._model is None:
             import torch
