@@ -1,3 +1,9 @@
+## v0.6.1 (2026-10-08)
+
+### Fix
+
+- **collector**: skip a failed channel instead of aborting collect (#15)
+
 ## v0.7.0 (2026-10-08)
 
 ### Feat
