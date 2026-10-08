@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -27,14 +28,19 @@ export function ProfilePage() {
     queryFn: () => unwrap(getUser({ path: { db_name: dbName } }))
   });
 
+  const political = useMutation({
+    mutationFn: () => unwrap(analyzePolitical({ path: { db_name: dbName } }))
+  });
+  const resetPolitical = political.reset;
+  // The result is of the comments it was made from: another user's page drops it.
+  useEffect(() => resetPolitical(), [dbName, resetPolitical]);
+
   const collect = useCollectJob((job) => {
+    // New comments make the political result stale; the page stays mounted.
+    political.reset();
     void queryClient.invalidateQueries({ queryKey: ["user"] });
     void queryClient.invalidateQueries({ queryKey: ["profiles"] });
     navigate(`/users/${encodeURIComponent(job.db_name!)}`);
-  });
-
-  const political = useMutation({
-    mutationFn: () => unwrap(analyzePolitical({ path: { db_name: dbName } }))
   });
 
   return (
@@ -121,8 +127,7 @@ export function ProfilePage() {
               </div>
               <div className="min-w-0 space-y-2">
                 <h3 className="font-medium">По дням</h3>
-                {/* A new latest day after a refresh selects it again. */}
-                <DailyChart key={`${dbName}:${daily_activity.at(-1)?.date}`} days={daily_activity} />
+                <DailyChart key={dbName} days={daily_activity} />
               </div>
             </CardContent>
           </Card>

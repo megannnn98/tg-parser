@@ -413,7 +413,7 @@ def _create_dist(root: Path) -> Path:
     return root
 
 
-@pytest.mark.parametrize("url", ["/", "/users/vasya_7.db", "/some/page"])
+@pytest.mark.parametrize("url", ["/", "/index.html", "/users/vasya_7.db", "/some/page"])
 def test_frontend_pages_get_index_html(tmp_path: Path, url: str):
     dist = _create_dist(tmp_path / "dist")
     app = create_app(data_dir=tmp_path, channels=[], frontend_dist=dist)

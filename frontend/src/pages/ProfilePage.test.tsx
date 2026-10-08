@@ -155,3 +155,32 @@ it("shows why the political analysis failed", async () => {
   expect(await screen.findByText("DEEPSEEK_API_KEY is not set")).toBeTruthy();
   expect(within(document.body).getByRole("button", { name: "Определить полит взгляды" })).toBeTruthy();
 });
+
+it("drops the political result once a refresh brings new comments", async () => {
+  vi.mocked(analyzePolitical).mockReturnValue(
+    ok({ total_messages: 40, signal_count: 10, bars: "", axes: {} }) as never
+  );
+  vi.mocked(startCollect).mockReturnValue(ok({ job_id: "j1" }) as never);
+  vi.mocked(collectStatus).mockReturnValue(
+    ok({
+      job_id: "j1",
+      user_ref: "@vasya",
+      total_channels: 1,
+      state: "done",
+      resolved: null,
+      channels: [],
+      saved_total: 60,
+      db_name: "vasya_7.db",
+      error: null
+    }) as never
+  );
+
+  renderProfile();
+  fireEvent.click(await screen.findByRole("button", { name: "Определить полит взгляды" }));
+  expect(await screen.findByText(/Итого: 10 из 40/)).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Обновить комментарии" }));
+
+  expect(await screen.findByText("Готово: сохранено 60 новых сообщений")).toBeTruthy();
+  await waitFor(() => expect(screen.queryByText(/Итого: 10 из 40/)).toBeNull());
+});

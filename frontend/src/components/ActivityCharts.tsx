@@ -65,10 +65,12 @@ export function HourlyChart({ hours }: { hours: HourCount[] }) {
 }
 
 /** Messages per day, scrolled to the latest days; a bar, clicked or Enter/Space on it,
- * shows its date and count below. The latest day is selected at first. */
+ * shows its date and count below. Until one is chosen, the latest day is. */
 export function DailyChart({ days }: { days: DayCount[] }) {
   const layout = dailyLayout(days);
-  const [selected, setSelected] = useState(days.length - 1);
+  // A date, not an index: a refetch can add days before the chosen one.
+  const [chosen, setChosen] = useState<string | null>(null);
+  const current = days.find((day) => day.date === chosen) ?? days.at(-1);
   const scroll = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -77,14 +79,13 @@ export function DailyChart({ days }: { days: DayCount[] }) {
     }
   }, [days]);
 
-  function onKeyDown(event: KeyboardEvent, index: number) {
+  function onKeyDown(event: KeyboardEvent, date: string) {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      setSelected(index);
+      setChosen(date);
     }
   }
 
-  const current = days[selected];
   return (
     <>
       <div ref={scroll} className="overflow-x-auto overscroll-x-contain pb-2" data-testid="daily-scroll">
@@ -95,7 +96,7 @@ export function DailyChart({ days }: { days: DayCount[] }) {
           role="img"
           aria-label="График активности по дням"
         >
-          {layout.bars.map((bar, index) => (
+          {layout.bars.map((bar) => (
             <g key={bar.date}>
               {bar.year ? (
                 <>
@@ -119,12 +120,12 @@ export function DailyChart({ days }: { days: DayCount[] }) {
                 role="button"
                 tabIndex={0}
                 aria-label={`${bar.date}: ${bar.count} сообщений`}
-                aria-pressed={index === selected}
-                onClick={() => setSelected(index)}
-                onKeyDown={(event) => onKeyDown(event, index)}
+                aria-pressed={bar.date === current?.date}
+                onClick={() => setChosen(bar.date)}
+                onKeyDown={(event) => onKeyDown(event, bar.date)}
                 className={cn(
                   "cursor-pointer fill-primary transition-[fill] outline-none hover:fill-accent-foreground focus-visible:fill-accent-foreground focus-visible:outline-2 focus-visible:outline-foreground",
-                  index === selected && "fill-accent-foreground stroke-foreground stroke-[1.5]"
+                  bar.date === current?.date && "fill-accent-foreground stroke-foreground stroke-[1.5]"
                 )}
               >
                 <title>{`${bar.count} сообщений за ${bar.date}`}</title>

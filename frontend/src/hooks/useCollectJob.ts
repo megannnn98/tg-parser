@@ -24,7 +24,11 @@ export function useCollectJob(onDone: (job: JobStatus) => void) {
     queryKey: ["collect", jobId],
     queryFn: () => unwrap(collectStatus({ path: { job_id: jobId! } })),
     enabled: jobId !== null,
-    refetchInterval: (query) => (query.state.data?.state === "running" ? POLL_MS : false),
+    // The last answer stays "running" after the retries run out: the error ends the poll.
+    refetchInterval: (query) =>
+      query.state.status !== "error" && query.state.data?.state === "running" ? POLL_MS : false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: MAX_POLL_FAILURES - 1,
     retryDelay: POLL_MS
   });

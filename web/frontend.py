@@ -30,11 +30,12 @@ def mount_frontend(app: FastAPI, dist: Path) -> None:
     def frontend(path: str) -> Response:
         if path == "api" or path.startswith("api/"):
             raise HTTPException(status_code=404, detail="Not Found")
-        if not (root / "index.html").is_file():
+        index = root / "index.html"
+        if not index.is_file():
             return PlainTextResponse(_NOT_BUILT.format(dist=root), status_code=503)
         file = (root / path).resolve()
-        if path and file.is_file() and file.is_relative_to(root):
+        if path and file != index and file.is_file() and file.is_relative_to(root):
             return FileResponse(file)
-        # Revalidated on every load: a cached index.html would name the hashed
-        # assets of an old build, gone after an update.
-        return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
+        # Revalidated on every load, by any address: a cached index.html would
+        # name the hashed assets of an old build, gone after an update.
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})

@@ -23,18 +23,23 @@ export function QueryState<T>({ query, isEmpty, empty = "Ничего не на�
       </div>
     );
   }
-  if (query.isError) {
-    return (
-      <Alert variant="destructive">
-        <AlertTitle>Ошибка загрузки</AlertTitle>
-        <AlertDescription>{query.error.message}</AlertDescription>
-      </Alert>
-    );
+  const error = query.isError ? (
+    <Alert variant="destructive">
+      <AlertTitle>Ошибка загрузки</AlertTitle>
+      <AlertDescription>{query.error.message}</AlertDescription>
+    </Alert>
+  ) : null;
+  // A failed refetch keeps what was loaded: unmounting it would lose a draft or
+  // the controls of a running action.
+  if (query.data === undefined) {
+    return error;
   }
-  if (isEmpty?.(query.data)) {
-    return <p className="text-sm text-muted-foreground">{empty}</p>;
-  }
-  return <>{children(query.data)}</>;
+  return (
+    <>
+      {error ? <div className="mb-4">{error}</div> : null}
+      {isEmpty?.(query.data) ? <p className="text-sm text-muted-foreground">{empty}</p> : children(query.data)}
+    </>
+  );
 }
 
 export function isEmptyList(data: readonly unknown[]): boolean {
