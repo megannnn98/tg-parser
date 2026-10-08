@@ -107,7 +107,7 @@ def load_user_profile(db_path: Path) -> UserProfile:
         if not _has_user_messages(db):
             raise UserProfileError(f"not a user comments database: {db_path}")
 
-        user = _fetch_primary_user(db)
+        user = _fetch_primary_user(db, db_path)
         channels = _fetch_channels(db, user["tg_id"], user["total_messages"])
 
     return UserProfile(
@@ -244,7 +244,9 @@ def _has_user_messages(db: sqlite3.Connection) -> bool:
     return row is not None
 
 
-def _fetch_primary_user(db: sqlite3.Connection) -> sqlite3.Row:
+def _fetch_primary_user(
+    db: sqlite3.Connection, db_path: Path
+) -> sqlite3.Row | dict[str, int | str | None]:
     row = db.execute(
         """
         SELECT
@@ -266,7 +268,13 @@ def _fetch_primary_user(db: sqlite3.Connection) -> sqlite3.Row:
         """
     ).fetchone()
     if row is None:
-        raise UserProfileError("user comments database is empty")
+        # Collection creates the database even when no comments are found.
+        # Its filename retains the Telegram ID in both supported formats:
+        # <name>_<id>.db and <id>.db.
+        id_part = db_path.stem.rsplit("_", 1)[-1]
+        if not id_part.isascii() or not id_part.isdecimal():
+            raise UserProfileError("empty user database has no Telegram ID")
+        return {"tg_id": int(id_part), "username": None, "total_messages": 0}
     return row
 
 

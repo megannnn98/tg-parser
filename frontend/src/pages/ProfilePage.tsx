@@ -55,7 +55,7 @@ export function ProfilePage() {
               <Button variant="outline" asChild>
                 <a href={`/api/v1/users/${encodeURIComponent(dbName)}/comments.txt`}>Скачать .txt</a>
               </Button>
-              <Button variant="outline" onClick={() => political.mutate()} disabled={political.isPending}>
+              <Button variant="outline" onClick={() => political.mutate()} disabled={political.isPending || profile.total_messages === 0}>
                 {political.isPending ? "Анализирую…" : "Определить полит взгляды"}
               </Button>
               {collect.running ? (
@@ -109,6 +109,10 @@ export function ProfilePage() {
               </div>
             </CardContent>
           </Card>
+
+          {profile.total_messages === 0 ? (
+            <p className="text-sm text-muted-foreground">Комментарии в выбранных каналах не найдены.</p>
+          ) : null}
 
           <Card>
             <CardContent>

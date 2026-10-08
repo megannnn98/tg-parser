@@ -64,6 +64,23 @@ it("shows the profile, its channels and the export link", async () => {
   );
 });
 
+it("shows an empty collection without an error and disables political analysis", async () => {
+  const empty = detail(null);
+  empty.profile.total_messages = 0;
+  empty.profile.channel_count = 0;
+  empty.profile.channels = [];
+  empty.hourly_activity = [];
+  empty.daily_activity = [];
+  empty.weekly_activity = [];
+  vi.mocked(getUser).mockReturnValue(ok(empty) as never);
+
+  renderProfile();
+
+  expect(await screen.findByText("Комментарии в выбранных каналах не найдены.")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Определить полит взгляды" }).hasAttribute("disabled")).toBe(true);
+  expect(screen.getByRole("button", { name: "Обновить комментарии" }).hasAttribute("disabled")).toBe(false);
+});
+
 it("says when the database is unknown", async () => {
   vi.mocked(getUser).mockReturnValue(failed(404, "Unknown user database") as never);
 

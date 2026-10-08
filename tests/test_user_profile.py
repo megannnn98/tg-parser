@@ -108,6 +108,29 @@ def test_load_user_profile_handles_missing_username(tmp_path: Path):
     assert profile.display_username == "нет ника"
 
 
+@pytest.mark.parametrize("db_name", ["rotor8_5448422967.db", "5448422967.db"])
+def test_empty_collection_loads_and_lists_profile(tmp_path: Path, db_name: str):
+    db_path = tmp_path / db_name
+    _create_user_db(db_path, [])
+
+    profile = load_user_profile(db_path)
+
+    assert profile.tg_id == 5448422967
+    assert profile.total_messages == 0
+    assert profile.channel_count == 0
+    assert profile.channels == []
+    assert list_user_profiles(tmp_path) == [profile]
+    assert fetch_user_comments(db_path, profile.tg_id) == []
+
+
+def test_empty_database_without_user_id_is_rejected(tmp_path: Path):
+    db_path = tmp_path / "unknown.db"
+    _create_user_db(db_path, [])
+
+    with pytest.raises(UserProfileError):
+        load_user_profile(db_path)
+
+
 def test_load_user_profile_rejects_non_user_database(tmp_path: Path):
     db_path = tmp_path / "app.db"
     with sqlite3.connect(db_path) as db:
