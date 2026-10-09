@@ -22,9 +22,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models import Base
 
 # The dimensionality of the vector columns, fixed by the chosen model
-# (intfloat/multilingual-e5-base). A model of another size needs a migration
+# (intfloat/multilingual-e5-small). A model of another size needs a migration
 # with tables of its own.
-EMBEDDING_DIMENSIONS = 768
+EMBEDDING_DIMENSIONS = 384
 
 
 class EmbeddingModel(Base):

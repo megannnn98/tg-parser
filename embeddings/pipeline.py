@@ -24,11 +24,13 @@ async def _model_id(sessions, spec) -> int:
 async def _embed_missing(sessions, encoder, fetch, store, batch_size: int) -> int:
     """Embeds batch after batch until nothing is missing; one transaction each."""
     stored = 0
+    after_id = 0
     while True:
         async with sessions() as session:
-            batch = await fetch(session, batch_size)
+            batch = await fetch(session, batch_size, after_id)
         if not batch:
             return stored
+        after_id = batch[-1][0]
         # The model blocks; keep the event loop free meanwhile.
         vectors = await asyncio.to_thread(
             encoder.encode_passages, [text for _, text in batch]
@@ -60,8 +62,8 @@ async def embed_messages(
     return await _embed_missing(
         sessions,
         encoder,
-        lambda session, limit: repo.messages_without_embedding(
-            session, model_id, limit, user_id
+        lambda session, limit, after_id: repo.messages_without_embedding(
+            session, model_id, limit, user_id, after_id
         ),
         lambda session, rows: repo.insert_message_embeddings(session, model_id, rows),
         batch_size,
@@ -86,8 +88,8 @@ async def embed_chunks(
     return await _embed_missing(
         sessions,
         encoder,
-        lambda session, limit: repo.chunks_without_embedding(
-            session, model_id, chunk_set_id, limit, user_id
+        lambda session, limit, after_id: repo.chunks_without_embedding(
+            session, model_id, chunk_set_id, limit, user_id, after_id
         ),
         lambda session, rows: repo.insert_chunk_embeddings(session, model_id, rows),
         batch_size,

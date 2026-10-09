@@ -13,7 +13,7 @@ from db.embedding_models import (
 )
 from db.models import Chunk, Message
 
-# A row carries a vector of 768 floats: keep statements small.
+# A row carries a whole vector: keep statements small.
 _BATCH_ROWS = 200
 
 
@@ -53,13 +53,24 @@ async def get_or_create_model(
 
 
 async def messages_without_embedding(
-    session: AsyncSession, model_id: int, limit: int, user_id: int | None = None
+    session: AsyncSession,
+    model_id: int,
+    limit: int,
+    user_id: int | None = None,
+    after_id: int = 0,
 ) -> list[tuple[int, str]]:
+    """Messages with no vector of the model, by id, starting after `after_id`.
+
+    The caller passes the last id it saw, so a long run does not walk over the
+    rows it has already embedded again for every batch.
+    """
     embedded = select(MessageEmbedding.message_id).where(
         MessageEmbedding.model_id == model_id,
         MessageEmbedding.message_id == Message.id,
     )
-    stmt = select(Message.id, Message.text).where(~embedded.exists())
+    stmt = select(Message.id, Message.text).where(
+        ~embedded.exists(), Message.id > after_id
+    )
     if user_id is not None:
         stmt = stmt.where(Message.user_id == user_id)
     stmt = stmt.order_by(Message.id).limit(limit)
@@ -72,12 +83,13 @@ async def chunks_without_embedding(
     chunk_set_id: int,
     limit: int,
     user_id: int | None = None,
+    after_id: int = 0,
 ) -> list[tuple[int, str]]:
     embedded = select(ChunkEmbedding.chunk_id).where(
         ChunkEmbedding.model_id == model_id, ChunkEmbedding.chunk_id == Chunk.id
     )
     stmt = select(Chunk.id, Chunk.text).where(
-        Chunk.chunk_set_id == chunk_set_id, ~embedded.exists()
+        Chunk.chunk_set_id == chunk_set_id, ~embedded.exists(), Chunk.id > after_id
     )
     if user_id is not None:
         stmt = stmt.where(Chunk.user_id == user_id)

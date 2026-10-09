@@ -16,7 +16,7 @@ from pathlib import Path
 
 from db import repositories
 from db.engine import create_engine, session_factory
-from embeddings.e5 import SPECS, E5Encoder
+from embeddings.e5 import PRODUCTION_MODEL, SPECS, E5Encoder
 from embeddings.pipeline import embed_chunks, embed_messages
 
 
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--messages", action="store_true")
     parser.add_argument("--chunk-set", type=int, default=None, metavar="ID")
-    parser.add_argument("--model", default="intfloat/multilingual-e5-base",
+    parser.add_argument("--model", default=PRODUCTION_MODEL.name,
                         choices=sorted(SPECS))
     parser.add_argument("--user", type=int, default=None, metavar="TG_ID",
                         help="only this user's messages and chunks, for a trial run")

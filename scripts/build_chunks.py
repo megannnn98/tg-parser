@@ -18,7 +18,7 @@ from pathlib import Path
 from chunking.builder import build_chunk_set
 from db import repositories
 from db.engine import create_engine, session_factory
-from embeddings.e5 import SPECS, E5Encoder
+from embeddings.e5 import PRODUCTION_MODEL, SPECS, E5Encoder
 
 
 def _model_cache() -> Path:
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--strategy", required=True)
     parser.add_argument("--params", default="{}", help="JSON object")
-    parser.add_argument("--model", default="intfloat/multilingual-e5-base",
+    parser.add_argument("--model", default=PRODUCTION_MODEL.name,
                         choices=sorted(SPECS))
     parser.add_argument("--user", type=int, default=None, metavar="TG_ID",
                         help="only this user, for a trial run")

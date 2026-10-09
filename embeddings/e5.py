@@ -33,6 +33,11 @@ MULTILINGUAL_E5_LARGE = E5Spec(
     "intfloat/multilingual-e5-large", "3d7cfbdacd47fdda877c5cd8a79fbcc4f2a574f3", 1024
 )
 
+# What the embedding tables are sized for (db/embedding_models.py). Chosen in
+# docs/embedding-model-benchmark.md; changing it needs a new benchmark and a
+# migration of the vector columns.
+PRODUCTION_MODEL = MULTILINGUAL_E5_SMALL
+
 SPECS = {
     spec.name: spec
     for spec in (MULTILINGUAL_E5_SMALL, MULTILINGUAL_E5_BASE, MULTILINGUAL_E5_LARGE)

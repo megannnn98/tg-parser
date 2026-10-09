@@ -9,20 +9,27 @@ from sqlalchemy import func, select, text
 from chunking.builder import build_chunk_set
 from db import embedding_repository as embedding_repo
 from db import repositories as repo
-from db.embedding_models import ChunkEmbedding, EmbeddingModel, MessageEmbedding
+from db.embedding_models import (
+    EMBEDDING_DIMENSIONS,
+    ChunkEmbedding,
+    EmbeddingModel,
+    MessageEmbedding,
+)
 from db.models import Chunk, Message
 from embeddings.e5 import E5Spec
 from embeddings.pipeline import embed_chunks, embed_messages
 
 START = datetime(2026, 1, 1, 12, 0, tzinfo=timezone.utc)
-SPEC = E5Spec(name="test/bag-of-words", revision="rev-1", dimensions=768)
+SPEC = E5Spec(
+    name="test/bag-of-words", revision="rev-1", dimensions=EMBEDDING_DIMENSIONS
+)
 
 
 def _vector(text_: str) -> np.ndarray:
     """A normalized bag of words: texts sharing words are close."""
-    vector = np.zeros(768, dtype=np.float32)
+    vector = np.zeros(EMBEDDING_DIMENSIONS, dtype=np.float32)
     for word in text_.lower().split():
-        vector[zlib.crc32(word.encode()) % 768] += 1
+        vector[zlib.crc32(word.encode()) % EMBEDDING_DIMENSIONS] += 1
     return vector / np.linalg.norm(vector)
 
 
@@ -87,7 +94,7 @@ def test_message_embeddings_are_stored_with_their_model(run_db):
     stored, model, rows, texts = run_db(scenario)
 
     assert stored == 3
-    assert (model.name, model.revision, model.dimensions) == ("test/bag-of-words", "rev-1", 768)
+    assert (model.name, model.revision, model.dimensions) == ("test/bag-of-words", "rev-1", EMBEDDING_DIMENSIONS)
     assert (model.pooling, model.normalized, model.max_tokens) == ("mean", True, 512)
     assert model.input_prefix == "passage: "
     assert [r[0] for r in rows] == [body for _, body in COMMENTS]
@@ -242,7 +249,7 @@ def test_models_and_revisions_are_kept_apart(run_db):
 @pytest.mark.parametrize(
     ("spec", "message"),
     [
-        (replace(SPEC, dimensions=384), "migration"),
+        (replace(SPEC, dimensions=768), "migration"),
         (replace(SPEC, revision=""), "revision"),
     ],
 )
@@ -414,3 +421,26 @@ def test_a_trial_run_can_be_limited_to_one_user(run_db):
     assert message_owners == embedded_chunk_owners == {first}
     assert not leaked
     assert (everyone, total) == (1, 4)
+
+
+def test_the_tables_fit_the_production_model(run_db):
+    from embeddings.e5 import PRODUCTION_MODEL
+
+    async def scenario(sessions):
+        async with sessions() as session:
+            return (
+                await session.execute(
+                    text(
+                        "SELECT c.relname, format_type(a.atttypid, a.atttypmod) "
+                        "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid "
+                        "WHERE a.attname = 'embedding' AND c.relname IN "
+                        "('message_embeddings', 'chunk_embeddings') ORDER BY 1"
+                    )
+                )
+            ).all()
+
+    columns = [tuple(row) for row in run_db(scenario)]
+
+    size = f"vector({PRODUCTION_MODEL.dimensions})"
+    assert columns == [("chunk_embeddings", size), ("message_embeddings", size)]
+    assert PRODUCTION_MODEL.dimensions == EMBEDDING_DIMENSIONS
