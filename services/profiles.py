@@ -73,6 +73,11 @@ class ProfileService:
             ],
         )
 
+    async def require(self, tg_id: int) -> None:
+        """Raises ProfileNotFound unless the user is stored."""
+        async with self._sessions() as session:
+            await self._user(session, tg_id)
+
     async def comments(self, tg_id: int) -> tuple[UserProfile, list[UserComment]]:
         """The user's comments, oldest first."""
         async with self._sessions() as session:

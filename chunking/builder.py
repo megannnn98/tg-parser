@@ -51,7 +51,8 @@ async def build_chunk_set(
         else:
             user_ids = await repo.users_with_stale_chunks(session, chunk_set_id)
     if only_user_ids is not None:
-        user_ids = [user_id for user_id in user_ids if user_id in set(only_user_ids)]
+        wanted = set(only_user_ids)
+        user_ids = [user_id for user_id in user_ids if user_id in wanted]
 
     written = 0
     for user_id in user_ids:

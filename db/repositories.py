@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from sqlalchemy import func, literal_column, select, update
+from sqlalchemy import func, literal_column, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -96,12 +96,16 @@ async def insert_messages(
     """Inserts rows of tg_message_id, user_id, channel_id, text, date.
 
     A comment already stored is left as it is, unless `refresh_text` asks to
-    take its text from Telegram again. Returns the number of new rows.
+    take its text from Telegram again. A comment whose text did change loses
+    what was derived from the old text: its embeddings and the chunks holding
+    it, which the chunk builder and the embedding pipeline then compute again.
+    Returns the number of new rows.
     """
     key = [Message.channel_id, Message.tg_message_id]
     # Sorted, so concurrent batches lock rows in one order and cannot deadlock.
     rows = sorted(rows, key=lambda row: (row["channel_id"], row["tg_message_id"]))
     inserted = 0
+    changed: list[int] = []
     for start in range(0, len(rows), _BATCH_ROWS):
         stmt = insert(Message).values(rows[start : start + _BATCH_ROWS])
         if refresh_text:
@@ -110,14 +114,40 @@ async def insert_messages(
                 set_={"text": stmt.excluded.text},
                 where=Message.text.is_distinct_from(stmt.excluded.text),
                 # xmax is 0 only for a row this statement created.
-            ).returning(literal_column("xmax = 0"))
-            inserted += sum(is_new for (is_new,) in await session.execute(stmt))
+            ).returning(Message.id, literal_column("xmax = 0"))
+            for message_id, is_new in await session.execute(stmt):
+                if is_new:
+                    inserted += 1
+                else:
+                    changed.append(message_id)
         else:
             stmt = stmt.on_conflict_do_nothing(index_elements=key).returning(
                 Message.id
             )
             inserted += len((await session.execute(stmt)).all())
+    if changed:
+        await _drop_derived(session, changed)
     return inserted
+
+
+async def _drop_derived(session: AsyncSession, message_ids: list[int]) -> None:
+    """Removes embeddings and chunks made from texts that have just changed.
+
+    Plain SQL: the embedding tables are mapped in db/embedding_models.py, which
+    needs numpy, and this module must load without it.
+    """
+    ids = {"ids": message_ids}
+    await session.execute(
+        text("DELETE FROM message_embeddings WHERE message_id = ANY(:ids)"), ids
+    )
+    # Their embeddings and message links go with the chunks (ON DELETE CASCADE).
+    await session.execute(
+        text(
+            "DELETE FROM chunks WHERE id IN "
+            "(SELECT chunk_id FROM chunk_messages WHERE message_id = ANY(:ids))"
+        ),
+        ids,
+    )
 
 
 async def get_user_by_tg_id(session: AsyncSession, tg_id: int) -> User | None:

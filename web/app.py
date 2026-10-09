@@ -171,7 +171,8 @@ async def analyze_political(request: Request, tg_id: int):
 @api.get("/users/{tg_id}/position-comparisons", response_model=PositionResults)
 async def get_position_comparisons(request: Request, tg_id: int):
     try:
-        await _profiles(request).detail(tg_id)
+        # Polled while an analysis runs: one lookup, not the whole profile.
+        await _profiles(request).require(tg_id)
     except ProfileNotFound as exc:
         raise _user_not_found() from exc
     return await run_in_threadpool(

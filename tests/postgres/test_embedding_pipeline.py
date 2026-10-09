@@ -444,3 +444,61 @@ def test_the_tables_fit_the_production_model(run_db):
     size = f"vector({PRODUCTION_MODEL.dimensions})"
     assert columns == [("chunk_embeddings", size), ("message_embeddings", size)]
     assert PRODUCTION_MODEL.dimensions == EMBEDDING_DIMENSIONS
+
+
+def test_a_refreshed_text_drops_what_was_derived_from_the_old_one(run_db):
+    params = {"max_messages": 2, "same_channel": True}
+
+    async def scenario(sessions):
+        user_id = await _seed(sessions, COMMENTS)
+        other = await _seed(sessions, [(50, "чужой комментарий")], tg_id=2)
+        built = await build_chunk_set(sessions, "fixed_messages", params, "words", _words)
+        encoder = FakeEncoder()
+        await embed_messages(sessions, encoder)
+        await embed_chunks(sessions, encoder, built.chunk_set_id)
+
+        # The first message is taken from Telegram again with another text;
+        # the second arrives unchanged.
+        async with sessions.begin() as session:
+            channel_id = await repo.upsert_channel(session, "news")
+            new_rows = await repo.insert_messages(
+                session,
+                [
+                    {"tg_message_id": 1, "user_id": user_id, "channel_id": channel_id,
+                     "text": "Профсоюз защищает рабочих", "date": START},
+                    {"tg_message_id": 2, "user_id": user_id, "channel_id": channel_id,
+                     "text": COMMENTS[1][1], "date": START},
+                ],
+                refresh_text=True,
+            )
+        async with sessions() as session:
+            embedded = (
+                await session.scalars(
+                    select(Message.tg_message_id)
+                    .join(MessageEmbedding, MessageEmbedding.message_id == Message.id)
+                    .order_by(Message.tg_message_id)
+                )
+            ).all()
+            chunk_texts = (
+                await session.scalars(select(Chunk.text).order_by(Chunk.date_from))
+            ).all()
+
+        seen = len(encoder.encoded)
+        rebuilt = await build_chunk_set(sessions, "fixed_messages", params, "words", _words)
+        messages_again = await embed_messages(sessions, encoder)
+        chunks_again = await embed_chunks(sessions, encoder, built.chunk_set_id)
+        return (new_rows, embedded, chunk_texts, rebuilt, messages_again,
+                chunks_again, encoder.encoded[seen:], other)
+
+    (new_rows, embedded, chunk_texts, rebuilt, messages_again, chunks_again,
+     recomputed, _other) = run_db(scenario)
+
+    assert new_rows == 0
+    # Only the message whose text changed lost its vector, and only the chunk
+    # that held it is gone: the user's other chunk and the other user's stay.
+    assert embedded == [2, 3, 50]
+    assert chunk_texts == ["рабочих защищает забастовка", "чужой комментарий"]
+    assert (rebuilt.users_rebuilt, messages_again) == (1, 1)
+    assert "Профсоюз защищает рабочих" in recomputed
+    assert "чужой комментарий" not in recomputed
+    assert chunks_again == 2
