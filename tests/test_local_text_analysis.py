@@ -30,7 +30,9 @@ class Embedding:
 
 def analysis(tmp_path, encode=vector):
     store = store_for(tmp_path)
-    return LocalTextAnalysis(store, MODEL, Embedding(store, encode))
+    service = LocalTextAnalysis(store, MODEL, Embedding(store, encode))
+    service.example_min_chars = 0  # The comments of these tests are single words.
+    return service
 
 
 def test_stored_vectors_rank_authors_without_openrouter(tmp_path, monkeypatch):
@@ -46,10 +48,10 @@ def test_stored_vectors_rank_authors_without_openrouter(tmp_path, monkeypatch):
     result = service.results(1)
     assert result.method == "text_similarity"
     assert not result.ranking  # No LLM agreement score is manufactured.
-    assert result.similar_authors[0].tg_id == 2
+    # The third author is on the other side of the average: not a similar one.
+    assert [a.tg_id for a in result.similar_authors] == [2]
     assert result.similar_authors[0].similarity == 1
     assert result.similar_authors[0].left_comments == 2
-    assert result.similar_authors[1].similarity < 0
     assert result.progress.processed_comments == 6
     assert result.progress.processed_embeddings == 3  # One row per distinct text.
     assert result.progress.processed_pairs == 3
@@ -66,10 +68,9 @@ def test_what_all_authors_share_is_removed_before_comparing(tmp_path):
         create_source(tmp_path, user, [(1, text, "2026-01-01")])
     service = analysis(tmp_path, close.__getitem__)
     asyncio.run(service.run())
-    near, far = service.results(1).similar_authors
-    assert (near.tg_id, far.tg_id) == (2, 3)
-    assert near.similarity > 0.9 and far.similarity < -0.9
-    assert near.examples[0].similarity == near.similarity
+    [near] = service.results(1).similar_authors
+    assert near.tg_id == 2 and near.similarity > 0.9
+    assert not service.results(3).similar_authors
 
 
 @pytest.mark.parametrize("texts_of_first", [1, 4])
@@ -82,6 +83,44 @@ def test_a_prolific_author_does_not_define_what_is_shared(tmp_path, texts_of_fir
     asyncio.run(service.run())
     # The same whether the first author wrote one such comment or four.
     assert service.results(2).similar_authors[0].similarity == 0.9888
+
+
+def examples_of(tmp_path, left, right, vectors, min_chars=0):
+    """(similarity, left text, right text) of the examples shown for two authors."""
+    for user, texts in ((1, left), (2, right), (3, ["z"])):
+        create_source(tmp_path, user, [(i, text, "2026-01-01") for i, text in enumerate(texts)])
+    service = analysis(tmp_path, lambda text: vectors.get(text[0], [0, 1]))
+    service.example_min_chars = min_chars
+    asyncio.run(service.run())
+    [author] = service.results(1).similar_authors
+    return [(e.similarity, e.left.text, e.right.text) for e in author.examples]
+
+
+def test_examples_are_the_closest_comments_and_none_is_shown_twice(tmp_path):
+    vectors = {"a": [1, 0], "b": [1, 0.1], "c": [1, 0.5], "d": [1, 0.2], "e": [1, 0.6]}
+    assert examples_of(tmp_path, ["a", "b", "c"], ["d", "e"], vectors) == [
+        (0.9971, "c", "e"),
+        (0.9952, "b", "d"),  # "a" is close to "d" too, but "d" is taken.
+    ]
+
+
+def test_one_comment_close_to_several_is_shown_once(tmp_path):
+    vectors = {"a": [1, 0], "d": [1, 0.2], "e": [1, 0.6]}
+    assert examples_of(tmp_path, ["a"], ["d", "e"], vectors) == [(0.9806, "a", "d")]
+
+
+def test_a_text_both_authors_wrote_is_not_an_example(tmp_path):
+    vectors = {"a": [1, 0], "b": [1, 0.3]}
+    assert examples_of(tmp_path, ["a"], ["a", "b"], vectors) == [(0.9578, "a", "b")]
+
+
+def test_short_comments_are_not_examples(tmp_path):
+    vectors = {"a": [1, 0], "b": [1, 0.3], "c": [1, 0.1]}
+    long_a, long_b = "a" * 80, "b" * 80
+    assert examples_of(tmp_path, [long_a, "a" * 79], [long_b, "c"], vectors, min_chars=80) == [
+        (0.9578, long_a, long_b)
+    ]
+    assert LocalTextAnalysis.example_min_chars == 80
 
 
 def test_authors_who_only_say_what_everyone_says_are_not_ranked(tmp_path):
@@ -104,7 +143,7 @@ def test_comments_without_a_vector_are_left_out(tmp_path):
     service = LocalTextAnalysis(store, MODEL)  # Nothing embeds the new comments.
     asyncio.run(service.run())
     result = service.results(1)
-    assert [(a.tg_id, a.similarity, a.right_comments) for a in result.similar_authors] == [(2, 1, 1), (4, -1, 1)]
+    assert [(a.tg_id, a.similarity, a.right_comments) for a in result.similar_authors] == [(2, 1, 1)]
     assert result.progress.total_comments == 5
     assert result.progress.processed_comments == 3
 
@@ -145,7 +184,7 @@ def test_failed_update_keeps_published_similarity(tmp_path):
     service = analysis(tmp_path)
     asyncio.run(service.run())
     old = service.results(1).similar_authors
-    assert [a.tg_id for a in old] == [2, 3]
+    assert [a.tg_id for a in old] == [2]
     create_source(tmp_path, 1, [(2, "beta", "2026-01-02")])
     service._embed_missing.fail = True
     with pytest.raises(RuntimeError, match="local model failure"):
@@ -158,7 +197,8 @@ def test_failed_update_keeps_published_similarity(tmp_path):
 
 def test_reverse_examples_and_old_llm_cache_are_not_mixed(tmp_path):
     create_source(tmp_path, 1, [(1, "alpha", "2026-01-01")])
-    create_source(tmp_path, 2, [(1, "beta", "2026-01-02")])
+    create_source(tmp_path, 2, [(1, "paraphrase", "2026-01-02")])
+    create_source(tmp_path, 3, [(1, "beta", "2026-01-03")])
     service = analysis(tmp_path)
     service.store.put("published", "latest", {"version": "legacy", "progress": {"state": "done"}})
     assert not service.results(1).similar_authors

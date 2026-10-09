@@ -11,7 +11,16 @@ from parser.position_comparison import AnalysisProgress, EmbeddingDetails, Evide
 from db.analysis_store import digest
 
 
+_EXAMPLES = 5
+# Comments of one author compared at a time; bounds the memory of the scores.
+_EXAMPLE_BLOCK = 1024
+
+
 class LocalTextAnalysis(PositionAnalysis):
+    # Shorter comments are close by form ("да", "согласен"), not by content,
+    # and are not shown as similar statements.
+    example_min_chars = 80
+
     # Reuse source loading, cancellation-safe persistence and progress reporting.
     # This constructor deliberately does not create a gateway or provider guard.
     def __init__(self, store, model=PRODUCTION_MODEL, embed_missing=None):
@@ -24,7 +33,7 @@ class LocalTextAnalysis(PositionAnalysis):
         self.model = model
         self._embed_missing = embed_missing
         self._vectors = f"{model.name}@{model.revision}:{model.passage_prefix.strip()}{model.pooling}:l2"
-        self.version = digest(["local-comment-similarity:centered-centroid:32-examples:v3", self._vectors])
+        self.version = digest(["local-comment-similarity:centered-centroid:closest-comments:v4", self._vectors])
 
     def ensure_provider_unchanged(self):
         pass
@@ -92,45 +101,71 @@ class LocalTextAnalysis(PositionAnalysis):
         norms = np.linalg.norm(centered, axis=1, keepdims=True)
         return np.divide(centered, norms, out=np.zeros_like(centered), where=norms > 1e-6)
 
-    @staticmethod
-    def _author_profiles(comments, indices, matrix):
+    def _author_profiles(self, comments, indices, centered):
+        """Each author's mean centered vector and the comments usable as examples."""
         import numpy as np
         by_user = {}
         for comment in comments:
             # Identical repeated comments have equal weight to one unique text.
             by_user.setdefault(comment["tg_id"], {})[indices[digest(comment["text"])]] = comment
-        vectors, examples = {}, {}
+        vectors, candidates = {}, {}
         for user, items in by_user.items():
-            rows = list(items)
-            mean = matrix[rows].mean(axis=0)
+            mean = centered[list(items)].mean(axis=0)
             norm = np.linalg.norm(mean)
             if norm <= 1e-8:
                 continue
-            mean /= norm
-            vectors[user] = mean
-            representatives = sorted(rows, key=lambda i: (-float(matrix[i] @ mean), i))[:32]
-            examples[user] = [(i, items[i]) for i in representatives]
-        return vectors, examples, {user: len(items) for user, items in by_user.items()}
+            vectors[user] = mean / norm
+            candidates[user] = [(row, comment) for row, comment in items.items()
+                                if len(comment["text"].strip()) >= self.example_min_chars]
+        return vectors, candidates, {user: len(items) for user, items in by_user.items()}
 
     @staticmethod
-    def _pair(left, right, vectors, examples, counts, matrix):
+    def _closest_comments(a, b, matrix):
+        """Up to five (similarity, a index, b index): the closest comments of two authors.
+
+        Every comment of one author is compared with every comment of the
+        other, by the similarity the search uses (the stored vectors, not the
+        centered ones). No comment appears twice.
+        """
         import numpy as np
-        a, b = examples[left], examples[right]
-        scores = matrix[[i for i, _ in a]] @ matrix[[i for i, _ in b]].T
+        if not a or not b:
+            return []
+        right_rows = np.array([row for row, _ in b])
+        right = matrix[right_rows]
+        keep = min(_EXAMPLES, len(b))
+        found = []
+        for start in range(0, len(a), _EXAMPLE_BLOCK):
+            rows = np.array([row for row, _ in a[start:start + _EXAMPLE_BLOCK]])
+            scores = matrix[rows] @ right.T
+            # Both authors wrote this very text: a copy shows nothing.
+            scores[rows[:, None] == right_rows[None, :]] = -np.inf
+            # Its `keep` closest for every comment, so that one comment close
+            # to many cannot crowd the others out.
+            closest = np.argpartition(-scores, keep - 1, axis=1)[:, :keep]
+            found.extend((float(scores[i, j]), start + i, int(j))
+                         for i, columns in enumerate(closest) for j in columns)
         matches, used_left, used_right = [], set(), set()
-        for flat in np.argsort(-scores.ravel(), kind="stable"):
-            i, j = divmod(int(flat), len(b))
-            if i in used_left or j in used_right:
+        for score, i, j in sorted(found, key=lambda match: (-match[0], match[1], match[2])):
+            if i in used_left or j in used_right or score == -np.inf:
                 continue
             used_left.add(i)
             used_right.add(j)
-            def evidence(comment):
-                return Evidence(**{k: comment[k] for k in ("text", "date", "channel", "message_id")},
-                                quote="", position="").model_dump()
-            matches.append({"similarity": round(float(np.clip(scores[i, j], -1, 1)), 4),
-                            "left": evidence(a[i][1]), "right": evidence(b[j][1])})
-            if len(matches) == 5:
+            matches.append((score, i, j))
+            if len(matches) == _EXAMPLES:
                 break
+        return matches
+
+    @classmethod
+    def _pair(cls, left, right, vectors, candidates, counts, matrix):
+        import numpy as np
+        a, b = candidates[left], candidates[right]
+
+        def evidence(comment):
+            return Evidence(**{k: comment[k] for k in ("text", "date", "channel", "message_id")},
+                            quote="", position="").model_dump()
+        matches = [{"similarity": round(float(np.clip(score, -1, 1)), 4),
+                    "left": evidence(a[i][1]), "right": evidence(b[j][1])}
+                   for score, i, j in cls._closest_comments(a, b, matrix)]
         return {"left": left, "right": right,
                 "similarity": round(float(np.clip(vectors[left] @ vectors[right], -1, 1)), 4),
                 "left_comments": counts[left], "right_comments": counts[right], "examples": matches}
@@ -144,8 +179,8 @@ class LocalTextAnalysis(PositionAnalysis):
                 comments = [c for c in comments if c["text"] and c["text"].strip()]
                 await self._report(checkpoint, total_comments=len(comments), activity="Комментарии прочитаны")
                 comments, indices, matrix = await self._embed_comments(comments, checkpoint)
-                matrix = await asyncio.to_thread(self._centered, comments, indices, matrix)
-                vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, matrix)
+                centered = await asyncio.to_thread(self._centered, comments, indices, matrix)
+                vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, centered)
                 users = sorted(vectors)
                 await self._report(checkpoint, phase="comparisons", total_pairs=len(users) * (len(users) - 1) // 2,
                                    total_relations=len(users) * (len(users) - 1) // 2,
@@ -196,7 +231,8 @@ class LocalTextAnalysis(PositionAnalysis):
                                         saved_vectors=self.store.count_comment_vectors(self.model)),
         )
         for pair in (current or {}).get("pairs", {}).values():
-            if tg_id not in (pair["left"], pair["right"]):
+            # An author on the other side of the average is not a similar one.
+            if tg_id not in (pair["left"], pair["right"]) or pair["similarity"] <= 0:
                 continue
             reverse = tg_id == pair["right"]
             other = pair["left"] if reverse else pair["right"]

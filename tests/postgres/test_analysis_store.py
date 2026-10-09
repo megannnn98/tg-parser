@@ -274,7 +274,6 @@ def test_default_app_compares_stored_embeddings_of_the_profiles(
     assert result["progress"]["state"] == "done"
     assert [(a["tg_id"], a["similarity"]) for a in result["similar_authors"]] == [
         (2, 1.0),
-        (4, -1.0),
     ]
     # The analysis embedded what was missing, and only for the profiles.
     assert encoder.encoded == ["alpha", "alpha", "beta"]
