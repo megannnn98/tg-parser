@@ -46,6 +46,8 @@ services:
     env_file: .env.docker
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD:-telegram}@postgres:5432/${POSTGRES_DB:-telegram_comments}
+      # The container user has no home directory; Hugging Face caches inside the mount.
+      HF_HOME: /app/data/hf-home
     volumes:
       - .:/app
     depends_on:
@@ -61,6 +63,8 @@ services:
     env_file: .env.docker
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD:-telegram}@postgres:5432/${POSTGRES_DB:-telegram_comments}
+      # The container user has no home directory; Hugging Face caches inside the mount.
+      HF_HOME: /app/data/hf-home
     entrypoint: ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "${WEB_PORT:-8000}:8000"
