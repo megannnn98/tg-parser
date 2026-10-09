@@ -1,0 +1,90 @@
+# The server deployment: README, «Выкладка на сервер».
+#
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml up -d postgres
+#   docker compose -f docker-compose.prod.yml run --rm migrate
+#   docker compose -f docker-compose.prod.yml up -d web
+#
+# Values come from `.env` next to this file. Nothing is published beyond the
+# host: a reverse proxy with TLS stands in front (deploy/nginx.conf.example).
+name: telegram-comments-prod
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-telegram}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-telegram_comments}
+    volumes:
+      # PostgreSQL 18 images keep the cluster in a version subdirectory.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web: &app
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: telegram-comments:prod
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-telegram_comments}
+      WEB_PASSWORD: ${WEB_PASSWORD:?set WEB_PASSWORD in .env}
+      API_ID: ${API_ID:?set API_ID in .env}
+      API_HASH: ${API_HASH:?set API_HASH in .env}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8002}:8000"
+    volumes:
+      - app-data:/app/data
+    # The proxy headers are trusted from any address because the port is
+    # published on 127.0.0.1 only: nothing but the host's proxy reaches it.
+    # They give the visitor's address (the login counts wrong passwords by it)
+    # and the https scheme (the session cookie is marked Secure by it).
+    command:
+      - uvicorn
+      - web.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips
+      - "*"
+      - --timeout-graceful-shutdown
+      - "20"
+      - --no-server-header
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/login', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Explicit schema migration step, run before the new version starts.
+  migrate:
+    <<: *app
+    profiles: ["migrate"]
+    restart: "no"
+    ports: []
+    healthcheck:
+      disable: true
+    command: ["alembic", "upgrade", "head"]
+
+volumes:
+  postgres-data:
+  app-data:

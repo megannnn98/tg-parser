@@ -244,3 +244,12 @@ def test_login_page_is_served_without_a_session(tmp_path: Path):
 
     assert response.status_code == 200
     assert response.text == "<html>app</html>"
+
+
+@pytest.mark.parametrize("url", ["/docs", "/redoc", "/openapi.json"])
+def test_api_description_is_not_published(tmp_path: Path, url: str):
+    with TestClient(_app(tmp_path)) as client:
+        response = client.get(url)
+
+    # No build in this test: the address falls through to the frontend.
+    assert response.status_code == 503

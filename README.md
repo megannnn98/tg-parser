@@ -200,7 +200,7 @@ auth key не зарегистрирован, аккаунт деактивир�
 ```
 
 FastAPI отдаёт сборку из `frontend/dist` (другой путь можно задать в `FRONTEND_DIST`), а
-JSON API живёт под `/api/v1` (схема — `http://localhost:8000/docs`). Без сборки любая
+JSON API живёт под `/api/v1` (схема — `frontend/openapi/openapi.json`). Без сборки любая
 страница отвечает `503` с подсказкой, как её получить. Вместо локальной сборки можно
 скачать артефакт `frontend-dist` последнего прогона GitHub Actions и распаковать его в
 `frontend/dist`.
@@ -627,6 +627,67 @@ docker compose exec -T postgres pg_dump -U telegram -d telegram_comments -Fc > t
 docker compose exec -T postgres pg_restore -U telegram -d telegram_comments --clean --if-exists < telegram_comments.dump
 ```
 
+## Выкладка на сервер
+
+Сервер запускает образ `deploy/Dockerfile`: код и собранный фронтенд лежат внутри него,
+из проекта ничего не монтируется. `docker-compose.prod.yml` поднимает PostgreSQL (без порта
+наружу) и сайт на `127.0.0.1:8002`; наружу его отдаёт reverse proxy с HTTPS. Пароль входа
+передаётся в открытом виде в теле запроса, поэтому без HTTPS сайт выкладывать нельзя.
+
+Сессия Telegram, список каналов и кеши моделей хранятся в томе `app-data`
+(`/app/data` в контейнере) и переживают пересборку образа.
+
+Первый раз, на сервере:
+
+```
+git clone https://github.com/megannnn98/tg-parser.git /root/telegram-comments
+cd /root/telegram-comments
+vim .env
+```
+
+В `.env`:
+
+```
+API_ID=...
+API_HASH=...
+WEB_PASSWORD=...          # пароль входа на сайт, длинный и случайный: openssl rand -base64 24
+POSTGRES_PASSWORD=...     # только буквы и цифры: openssl rand -hex 24
+OPENROUTER_API_KEY=...    # для «Определить полит. взгляды»
+APP_TIMEZONE=Asia/Almaty
+```
+
+Выкладка и каждое следующее обновление, с рабочего компьютера:
+
+```
+ssh root@SERVER 'bash -s' < deploy/deploy.sh
+```
+
+Скрипт проверяет рабочее дерево, делает `pg_dump` в `backups/`, обновляет код
+(`BRANCH=...` выбирает ветку, по умолчанию `main`), собирает образ, применяет миграции,
+пересоздаёт сайт и проверяет, что страница входа отвечает `200`, а API без входа — `401`.
+Пересоздание сайта обрывает идущий сбор комментариев или анализ.
+
+Вход в Telegram на сервере (один раз; файл сессии с рабочего компьютера не копируйте —
+одна сессия с двух адресов может быть отозвана Telegram):
+
+```
+docker compose -f docker-compose.prod.yml run --rm web python -m scripts.login
+```
+
+Перенос базы с рабочего компьютера:
+
+```
+docker compose exec -T postgres pg_dump -U telegram -Fc telegram_comments > telegram_comments.dump
+scp telegram_comments.dump root@SERVER:/root/telegram-comments/
+ssh root@SERVER 'cd /root/telegram-comments && docker compose -f docker-compose.prod.yml exec -T postgres \
+  pg_restore -U telegram -d telegram_comments --clean --if-exists --no-owner < telegram_comments.dump'
+```
+
+Reverse proxy: пример для nginx с certbot — `deploy/nginx.conf.example`. Proxy обязан
+передавать `X-Forwarded-Proto` и записывать в `X-Forwarded-For` только адрес посетителя
+(`$remote_addr`): по нему считаются неверные пароли, и адрес, присланный самим посетителем,
+позволил бы обойти ограничение.
+
 ## Переменные окружения
 
 | Переменная | По умолчанию | Значение |
@@ -635,6 +696,7 @@ docker compose exec -T postgres pg_restore -U telegram -d telegram_comments --cl
 | `DATABASE_URL` | — | Адрес PostgreSQL, `postgresql+asyncpg://user:password@host:5432/database`; обязателен |
 | `APP_TIMEZONE` | `Asia/Almaty` | Пояс, в котором считаются часы и дни активности |
 | `WEB_PASSWORD` | — | Пароль для входа на сайт; обязателен для режима `web` |
+| `SESSION_DIR` | текущий каталог | Каталог файла сессии Telegram `my_session.session` |
 | `DATA_DIR` | `data` | Каталог для весов моделей и журналов |
 | `CHANNELS_PATH` | `channels.json` | Файл со списком каналов (его же дописывает `discover-channels`) |
 | `LIMIT` | `1000` | Сообщений на источник для `collect`, `find-user` (история) и `discover-channels`; в `user-comments` не используется |

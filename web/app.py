@@ -295,7 +295,15 @@ def create_app(
 
     ZoneInfo(timezone)  # An unknown zone fails here, not on the first chart.
 
-    app = FastAPI(title="Telegram user profiles", lifespan=lifespan)
+    # The description of the API is not served: the site is reachable by anyone,
+    # and the frontend takes it from `frontend/openapi/openapi.json`.
+    app = FastAPI(
+        title="Telegram user profiles",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     # No connection is made until a request needs the database.
     app.state.database = Database(database_url)
     app.state.password = password

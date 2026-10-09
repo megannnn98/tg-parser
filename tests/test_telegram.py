@@ -64,6 +64,21 @@ def test_get_client_uses_config_values(monkeypatch):
     }
 
 
+def test_get_client_keeps_the_session_in_session_dir(monkeypatch, tmp_path):
+    telegram = _load_telegram_module(monkeypatch)
+    captured: dict[str, object] = {}
+
+    class FakeClient:
+        def __init__(self, session_name, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(telegram, "Client", FakeClient)
+    monkeypatch.setenv("SESSION_DIR", str(tmp_path))
+    telegram.get_client()
+
+    assert captured["workdir"] == tmp_path
+
+
 def test_get_chat_with_retry_waits_out_flood_wait(monkeypatch):
     telegram = _load_telegram_module(monkeypatch)
     slept: list[int] = []

@@ -1,4 +1,5 @@
 import asyncio
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,13 +62,14 @@ def get_client():
     # Pyrogram defaults workdir to Path(sys.argv[0]).parent, which is the
     # entry point's own directory (e.g. /usr/local/bin for `uvicorn ...`),
     # not the project directory - it must be pinned explicitly so the
-    # session file resolves the same way under any entry point.
+    # session file resolves the same way under any entry point. SESSION_DIR
+    # moves it out of the project, to a volume that outlives the container.
     return Client(
         "my_session",
         api_id=API_ID,
         api_hash=API_HASH,
         sleep_threshold=60,
-        workdir=Path.cwd(),
+        workdir=Path(os.getenv("SESSION_DIR") or Path.cwd()),
     )
 
 
