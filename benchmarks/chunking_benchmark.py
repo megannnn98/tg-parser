@@ -173,9 +173,9 @@ class Corpus:
         return vectors, seconds
 
 
-def evaluate(index: Index, queries: list[EvalQuery], query_vectors: np.ndarray,
-             corpus: Corpus, ranker=None) -> dict:
-    """Mean metrics over the queries; each searches its own user's units."""
+def evaluate_queries(index: Index, queries: list[EvalQuery],
+                     query_vectors: np.ndarray, corpus: Corpus, ranker=None) -> list[dict]:
+    """The metrics of every query; each searches its own user's units."""
     rows = []
     for query, vector in zip(queries, query_vectors):
         if ranker is None:
@@ -202,6 +202,13 @@ def evaluate(index: Index, queries: list[EvalQuery], query_vectors: np.ndarray,
                 sum(corpus.tokens[m] for m in unit) < SHORT_TOKENS for unit in top
             ])) if top else 0.0,
         })
+    return rows
+
+
+def evaluate(index: Index, queries: list[EvalQuery], query_vectors: np.ndarray,
+             corpus: Corpus, ranker=None) -> dict:
+    """Mean metrics over the queries."""
+    rows = evaluate_queries(index, queries, query_vectors, corpus, ranker)
     return {key: float(np.mean([row[key] for row in rows])) for key in rows[0]}
 
 
