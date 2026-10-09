@@ -18,6 +18,11 @@ from parser.utils import join_name
 
 _logger = get_logger("jobs")
 
+_NO_TELEGRAM_LOGIN = (
+    "На сервере не выполнен вход в Telegram. Выполните его командой "
+    "`python -m scripts.login` (см. README) и повторите."
+)
+
 
 class JobAlreadyRunningError(RuntimeError):
     pass
@@ -149,6 +154,12 @@ class JobRegistry:
             job.error = "Сбор был прерван"
             job.state = "error"
             raise
+        except EOFError:
+            # Pyrogram asked for a phone number: there is no Telegram session,
+            # and nobody at this process's input to create one.
+            _logger.error(f"Job {job.job_id} ({user_ref!r}): no Telegram session")
+            job.error = _NO_TELEGRAM_LOGIN
+            job.state = "error"
         except Exception as exc:
             _logger.exception(f"Job {job.job_id} ({user_ref!r}) failed")
             job.error = str(exc)

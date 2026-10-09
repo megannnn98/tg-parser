@@ -83,6 +83,27 @@ def test_start_collect_reports_error_status_on_failure(tmp_path: Path):
     assert body["error"] == "Cannot resolve user '@ghost'"
 
 
+def test_start_collect_says_when_telegram_login_is_missing(tmp_path: Path):
+    async def fake_collect(data_dir, cfg, user_ref, deps):
+        # What Pyrogram's prompt for a phone number ends with when nobody can answer.
+        raise EOFError("EOF when reading a line")
+
+    registry = JobRegistry(collect_fn=fake_collect)
+    app = create_app(database_url=_NO_DATABASE, channels=["chan_a"], job_registry=registry)
+
+    with logged_in(app) as client:
+        resp = client.post("/api/v1/collect", json={"username": "@vasya"})
+        job_id = resp.json()["job_id"]
+
+        body = _wait_for_final_status(client, job_id)
+
+    assert body["state"] == "error"
+    assert body["error"] == (
+        "На сервере не выполнен вход в Telegram. Выполните его командой "
+        "`python -m scripts.login` (см. README) и повторите."
+    )
+
+
 def test_start_collect_rejects_empty_username(tmp_path: Path):
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"])
 
