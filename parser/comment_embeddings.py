@@ -23,7 +23,12 @@ class LocalCommentE5(LocalE5):
         totals = {}
         for start in range(0, len(chunks), 16):
             batch = chunks[start:start + 16]
-            rows = [tokenizer.prepare_for_model(prefix + chunk, return_attention_mask=True) for _, chunk in batch]
+            # The special tokens are added by hand: transformers 5 dropped prepare_for_model.
+            rows = [
+                [tokenizer.cls_token_id, *prefix, *chunk, tokenizer.sep_token_id]
+                for _, chunk in batch
+            ]
+            rows = [{"input_ids": row, "attention_mask": [1] * len(row)} for row in rows]
             inputs = tokenizer.pad(rows, padding=True, return_tensors="pt").to(self._model.device)
             with torch.inference_mode():
                 output = self._model(**inputs).last_hidden_state

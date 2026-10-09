@@ -146,13 +146,14 @@ def test_long_comments_include_tail_and_produce_normalized_vectors(tmp_path):
     class Tokenizer:
         def encode(self, text, **kwargs):
             return [0] if text == "query: " else [1] * 510 + [9] * 600
+        # transformers 5 has no prepare_for_model: the embedder adds these itself.
+        cls_token_id = sep_token_id = 0
         def num_special_tokens_to_add(self, **kwargs):
-            return 0
-        def prepare_for_model(self, ids, **kwargs):
-            assert len(ids) <= 512
-            seen.extend(ids[1:])
-            return {"input_ids": ids}
+            return 2
         def pad(self, rows, **kwargs):
+            for row in rows:
+                assert len(row["input_ids"]) <= 512
+                seen.extend(row["input_ids"][2:-1])
             size = max(len(r["input_ids"]) for r in rows)
             return Inputs(input_ids=torch.tensor([r["input_ids"] + [0] * (size - len(r["input_ids"])) for r in rows]),
                           attention_mask=torch.tensor([[1] * len(r["input_ids"]) + [0] * (size - len(r["input_ids"])) for r in rows]))
