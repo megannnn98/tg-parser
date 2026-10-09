@@ -17,8 +17,15 @@ from parser.political_coords import (
 
 
 class FakeResponse:
-    def __init__(self, status_code: int, json_data: dict | None = None, text: str = ""):
+    def __init__(
+        self,
+        status_code: int,
+        json_data: dict | None = None,
+        text: str = "",
+        headers: dict | None = None,
+    ):
         self.status_code = status_code
+        self.headers = headers or {}
         self._json_data = json_data
         self.text = text
 
@@ -46,6 +53,34 @@ class FakeClient:
 
     async def aclose(self):
         self.closed = True
+
+
+class SequenceClient(FakeClient):
+    """Answers with the given responses in turn, then repeats the last one."""
+
+    def __init__(self, *responses: FakeResponse):
+        super().__init__()
+        self._responses = list(responses)
+
+    async def post(self, url, **kwargs):
+        self.posts.append(kwargs)
+        if len(self._responses) > 1:
+            return self._responses.pop(0)
+        return self._responses[0]
+
+
+@pytest.fixture
+def delays(monkeypatch):
+    """The waits between retries, which then take no time."""
+    import parser.political_coords as module
+
+    waited: list[float] = []
+
+    async def sleep(seconds):
+        waited.append(seconds)
+
+    monkeypatch.setattr(module.asyncio, "sleep", sleep)
+    return waited
 
 
 def _ndjson_response(*analyses: dict) -> dict:
@@ -326,3 +361,92 @@ class TestAnalyzePoliticalCoords:
         finally:
             if old_key is not None:
                 os.environ["OPENROUTER_API_KEY"] = old_key
+
+
+class TestRateLimit:
+    COMMENTS = ["A" * 50]
+
+    @pytest.mark.asyncio
+    async def test_a_rate_limited_batch_is_sent_again(self, delays):
+        client = SequenceClient(
+            FakeResponse(429), FakeResponse(429), FakeResponse(200, _ndjson_response())
+        )
+
+        result = await analyze_political_coords(
+            self.COMMENTS, api_key="test-key", http_client=client
+        )
+
+        assert result.total_messages == 1
+        assert len(client.posts) == 3
+        assert delays == [2.0, 4.0]
+
+    @pytest.mark.asyncio
+    async def test_the_wait_the_server_asks_for_is_used(self, delays):
+        client = SequenceClient(
+            FakeResponse(429, headers={"Retry-After": "7"}),
+            FakeResponse(429, headers={"Retry-After": "600"}),
+            FakeResponse(200, _ndjson_response()),
+        )
+
+        await analyze_political_coords(
+            self.COMMENTS, api_key="test-key", http_client=client
+        )
+
+        assert delays == [7.0, 60.0]
+
+    @pytest.mark.asyncio
+    async def test_a_limit_that_does_not_lift_is_reported(self, delays):
+        client = SequenceClient(FakeResponse(429))
+
+        with pytest.raises(PoliticalCoordsError, match="429: rate limit"):
+            await analyze_political_coords(
+                self.COMMENTS, api_key="test-key", http_client=client
+            )
+
+        assert len(client.posts) == 5
+        assert delays == [2.0, 4.0, 8.0, 16.0]
+
+    @pytest.mark.asyncio
+    async def test_other_errors_are_not_retried(self, delays):
+        client = SequenceClient(FakeResponse(500))
+
+        with pytest.raises(PoliticalCoordsError, match="500"):
+            await analyze_political_coords(
+                self.COMMENTS, api_key="test-key", http_client=client
+            )
+
+        assert len(client.posts) == 1 and delays == []
+
+
+class TestFailedBatch:
+    @pytest.mark.asyncio
+    async def test_the_other_batches_are_cancelled(self):
+        import asyncio
+
+        class Client(FakeClient):
+            cancelled = 0
+
+            async def post(self, url, **kwargs):
+                self.posts.append(kwargs)
+                if len(self.posts) == 1:
+                    return FakeResponse(401)
+                try:
+                    await asyncio.Event().wait()  # An answer that never comes.
+                except asyncio.CancelledError:
+                    Client.cancelled += 1
+                    raise
+
+        client = Client()
+        comments = [f"{i:02d}" + "A" * 50 for i in range(15 * 5)]  # Five batches.
+
+        with pytest.raises(PoliticalCoordsError, match="401"):
+            await analyze_political_coords(
+                comments, api_key="test-key", http_client=client
+            )
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        # Three run at a time, and the failed one let a fourth start. Those
+        # waiting for an answer were stopped; the fifth batch was never sent.
+        assert Client.cancelled == 3
+        assert len(client.posts) == 4

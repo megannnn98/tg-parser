@@ -1,25 +1,39 @@
-"""Cached local comment embeddings and author similarity without external inference."""
+"""Author similarity from the stored comment embeddings, without external inference."""
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
 from contextlib import nullcontext
 from itertools import combinations
 
-from parser.comment_embeddings import LocalCommentE5
+from embeddings.e5 import PRODUCTION_MODEL
 from parser.position_analysis import PositionAnalysis
 from parser.position_comparison import AnalysisProgress, EmbeddingDetails, Evidence, PositionResults, SimilarAuthor
 from db.analysis_store import digest
 
 
+_EXAMPLES = 5
+# Comments of one author compared at a time; bounds the memory of the scores.
+_EXAMPLE_BLOCK = 1024
+
+
 class LocalTextAnalysis(PositionAnalysis):
+    # Shorter comments are close by form ("да", "согласен"), not by content,
+    # and are not shown as similar statements.
+    example_min_chars = 80
+
     # Reuse source loading, cancellation-safe persistence and progress reporting.
     # This constructor deliberately does not create a gateway or provider guard.
-    def __init__(self, store, embedder=None, model_cache_dir=None):
+    def __init__(self, store, model=PRODUCTION_MODEL, embed_missing=None):
+        """`model` names the vectors of message_embeddings to compare.
+
+        `embed_missing` is awaited before they are read, so that comments
+        collected after the last embedding run take part.
+        """
         self.store = store
-        self.embedder = embedder or LocalCommentE5(cache_dir=model_cache_dir)
-        self.version = digest(["local-comment-similarity:centroid:32-examples:v1", self.embedder.version])
-        self._vectors = "comment-embeddings:" + self.embedder.version
+        self.model = model
+        self._embed_missing = embed_missing
+        self._vectors = f"{model.name}@{model.revision}:{model.passage_prefix.strip()}{model.pooling}:l2"
+        self.version = digest(["local-comment-similarity:centered-centroid:closest-comments:v4", self._vectors])
 
     def ensure_provider_unchanged(self):
         pass
@@ -46,97 +60,112 @@ class LocalTextAnalysis(PositionAnalysis):
         return matrix / norms
 
     async def _embed_comments(self, comments, checkpoint):
-        import numpy as np
-        texts = {digest(c["text"]): c["text"] for c in comments}
-        keys = list(texts)
-        indices = {key: i for i, key in enumerate(keys)}
-        frequencies = Counter(digest(c["text"]) for c in comments)
-        matrix = None
-        missing = []
-        processed = cached_count = processed_comments = 0
-        await self._report(checkpoint, phase="embeddings", total_embeddings=len(keys),
-                           activity="Проверка кеша эмбеддингов самих комментариев")
-        # Decode only a small cache page at a time; retain compact float32 vectors.
-        for start in range(0, len(keys), 256):
-            batch = keys[start:start + 256]
-            cache = await asyncio.to_thread(self.store.get_many, self._vectors, batch)
-            for key in batch:
-                if key not in cache:
-                    missing.append(key)
-                    continue
-                vector = self._validated_vectors([cache[key]], 1,
-                                                 getattr(self.embedder, "dimensions", None) if matrix is None else matrix.shape[1])[0]
-                if matrix is None:
-                    matrix = np.empty((len(keys), len(vector)), dtype=np.float32)
-                matrix[indices[key]] = vector
-                processed += 1
-                cached_count += frequencies[key]
-                processed_comments += frequencies[key]
-            await self._report(checkpoint, processed_embeddings=processed, cached_embeddings=processed,
-                               processed_comments=processed_comments, cached_comments=cached_count,
-                               activity="Загрузка сохранённых эмбеддингов комментариев")
-        for start in range(0, len(missing), 16):
-            batch = missing[start:start + 16]
-            preparing = isinstance(self.embedder, LocalCommentE5) and self.embedder._model is None
-            await self._report(checkpoint, activity=(
-                "Подготовка локальной E5: при первом запуске скачиваются веса модели" if preparing else
-                f"Локальная E5: создание эмбеддингов {len(batch)} комментариев"
-            ))
-            values = self._validated_vectors(
-                await self.embedder.encode([texts[key] for key in batch]), len(batch),
-                getattr(self.embedder, "dimensions", None) if matrix is None else matrix.shape[1],
-            )
-            await self._store_write(self.store.put_many, self._vectors,
-                                    {key: vector.tolist() for key, vector in zip(batch, values)})
-            if matrix is None:
-                matrix = np.empty((len(keys), values.shape[1]), dtype=np.float32)
-            for key, vector in zip(batch, values):
-                matrix[indices[key]] = vector
-                processed_comments += frequencies[key]
-            processed += len(batch)
-            await self._report(checkpoint, processed_embeddings=processed, processed_comments=processed_comments,
-                               activity="Эмбеддинги комментариев сохранены в PostgreSQL")
-        return indices, matrix
+        """The comments that have a vector, the row of each text and the rows."""
+        await self._report(checkpoint, phase="embeddings",
+                           activity="Создание эмбеддингов новых комментариев")
+        if self._embed_missing is not None:
+            await self._embed_missing()
+        await self._report(checkpoint, activity="Загрузка эмбеддингов комментариев из PostgreSQL")
+        stored = await asyncio.to_thread(self.store.comment_vectors, self.model)
+        comments = [c for c in comments if c["id"] in stored]
+        indices, rows = {}, []
+        for comment in comments:
+            key = digest(comment["text"])
+            if key not in indices:
+                indices[key] = len(rows)
+                rows.append(stored[comment["id"]])
+        if not rows:
+            raise ValueError("Нет эмбеддингов комментариев. Постройте их: python -m scripts.embed --messages")
+        matrix = self._validated_vectors(rows, len(rows), self.model.dimensions)
+        await self._report(checkpoint, total_embeddings=len(rows), processed_embeddings=len(rows),
+                           cached_embeddings=len(rows), processed_comments=len(comments),
+                           cached_comments=len(comments), activity="Эмбеддинги комментариев загружены")
+        return comments, indices, matrix
 
     @staticmethod
-    def _author_profiles(comments, indices, matrix):
+    def _centered(comments, indices, matrix):
+        """The rows without what all authors share, at unit length again.
+
+        E5 vectors of any two texts are close, and averaging an author's
+        comments leaves little else: uncentered, every pair of authors scores
+        about 0.99. The shared part is the mean of the authors' own means, so
+        that a prolific author does not define it. A row equal to it carries
+        no signal and becomes zero.
+        """
+        import numpy as np
+        by_user = {}
+        for comment in comments:
+            by_user.setdefault(comment["tg_id"], set()).add(indices[digest(comment["text"])])
+        shared = np.mean([matrix[sorted(rows)].mean(axis=0) for rows in by_user.values()], axis=0)
+        centered = matrix - shared
+        norms = np.linalg.norm(centered, axis=1, keepdims=True)
+        return np.divide(centered, norms, out=np.zeros_like(centered), where=norms > 1e-6)
+
+    def _author_profiles(self, comments, indices, centered):
+        """Each author's mean centered vector and the comments usable as examples."""
         import numpy as np
         by_user = {}
         for comment in comments:
             # Identical repeated comments have equal weight to one unique text.
             by_user.setdefault(comment["tg_id"], {})[indices[digest(comment["text"])]] = comment
-        vectors, examples = {}, {}
+        vectors, candidates = {}, {}
         for user, items in by_user.items():
-            rows = list(items)
-            mean = matrix[rows].mean(axis=0)
+            mean = centered[list(items)].mean(axis=0)
             norm = np.linalg.norm(mean)
             if norm <= 1e-8:
                 continue
-            mean /= norm
-            vectors[user] = mean
-            representatives = sorted(rows, key=lambda i: (-float(matrix[i] @ mean), i))[:32]
-            examples[user] = [(i, items[i]) for i in representatives]
-        return vectors, examples, {user: len(items) for user, items in by_user.items()}
+            vectors[user] = mean / norm
+            candidates[user] = [(row, comment) for row, comment in items.items()
+                                if len(comment["text"].strip()) >= self.example_min_chars]
+        return vectors, candidates, {user: len(items) for user, items in by_user.items()}
 
     @staticmethod
-    def _pair(left, right, vectors, examples, counts, matrix):
+    def _closest_comments(a, b, matrix):
+        """Up to five (similarity, a index, b index): the closest comments of two authors.
+
+        Every comment of one author is compared with every comment of the
+        other, by the similarity the search uses (the stored vectors, not the
+        centered ones). No comment appears twice.
+        """
         import numpy as np
-        a, b = examples[left], examples[right]
-        scores = matrix[[i for i, _ in a]] @ matrix[[i for i, _ in b]].T
+        if not a or not b:
+            return []
+        right_rows = np.array([row for row, _ in b])
+        right = matrix[right_rows]
+        keep = min(_EXAMPLES, len(b))
+        found = []
+        for start in range(0, len(a), _EXAMPLE_BLOCK):
+            rows = np.array([row for row, _ in a[start:start + _EXAMPLE_BLOCK]])
+            scores = matrix[rows] @ right.T
+            # Both authors wrote this very text: a copy shows nothing.
+            scores[rows[:, None] == right_rows[None, :]] = -np.inf
+            # Its `keep` closest for every comment, so that one comment close
+            # to many cannot crowd the others out.
+            closest = np.argpartition(-scores, keep - 1, axis=1)[:, :keep]
+            found.extend((float(scores[i, j]), start + i, int(j))
+                         for i, columns in enumerate(closest) for j in columns)
         matches, used_left, used_right = [], set(), set()
-        for flat in np.argsort(-scores.ravel(), kind="stable"):
-            i, j = divmod(int(flat), len(b))
-            if i in used_left or j in used_right:
+        for score, i, j in sorted(found, key=lambda match: (-match[0], match[1], match[2])):
+            if i in used_left or j in used_right or score == -np.inf:
                 continue
             used_left.add(i)
             used_right.add(j)
-            def evidence(comment):
-                return Evidence(**{k: comment[k] for k in ("text", "date", "channel", "message_id")},
-                                quote="", position="").model_dump()
-            matches.append({"similarity": round(float(np.clip(scores[i, j], -1, 1)), 4),
-                            "left": evidence(a[i][1]), "right": evidence(b[j][1])})
-            if len(matches) == 5:
+            matches.append((score, i, j))
+            if len(matches) == _EXAMPLES:
                 break
+        return matches
+
+    @classmethod
+    def _pair(cls, left, right, vectors, candidates, counts, matrix):
+        import numpy as np
+        a, b = candidates[left], candidates[right]
+
+        def evidence(comment):
+            return Evidence(**{k: comment[k] for k in ("text", "date", "channel", "message_id")},
+                            quote="", position="").model_dump()
+        matches = [{"similarity": round(float(np.clip(score, -1, 1)), 4),
+                    "left": evidence(a[i][1]), "right": evidence(b[j][1])}
+                   for score, i, j in cls._closest_comments(a, b, matrix)]
         return {"left": left, "right": right,
                 "similarity": round(float(np.clip(vectors[left] @ vectors[right], -1, 1)), 4),
                 "left_comments": counts[left], "right_comments": counts[right], "examples": matches}
@@ -149,8 +178,9 @@ class LocalTextAnalysis(PositionAnalysis):
                 profiles, comments = await asyncio.to_thread(self._load_sources)
                 comments = [c for c in comments if c["text"] and c["text"].strip()]
                 await self._report(checkpoint, total_comments=len(comments), activity="Комментарии прочитаны")
-                indices, matrix = await self._embed_comments(comments, checkpoint)
-                vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, matrix)
+                comments, indices, matrix = await self._embed_comments(comments, checkpoint)
+                centered = await asyncio.to_thread(self._centered, comments, indices, matrix)
+                vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, centered)
                 users = sorted(vectors)
                 await self._report(checkpoint, phase="comparisons", total_pairs=len(users) * (len(users) - 1) // 2,
                                    total_relations=len(users) * (len(users) - 1) // 2,
@@ -195,12 +225,14 @@ class LocalTextAnalysis(PositionAnalysis):
             method="text_similarity", version=current["version"] if current else self.version, progress=progress,
             incomplete=bool(current and current["progress"]["state"] != "done"),
             needs_update=bool(current and (current["version"] != self.version or current["manifest"] != self.store.manifest())),
-            embeddings=EmbeddingDetails(model=getattr(self.embedder, "model_name", self.embedder.version),
-                                        version=self.embedder.version, dimensions=getattr(self.embedder, "dimensions", 0),
-                                        storage=self.store.location, saved_vectors=self.store.count(self._vectors)),
+            embeddings=EmbeddingDetails(model=self.model.name, version=self._vectors,
+                                        dimensions=self.model.dimensions,
+                                        storage="PostgreSQL, таблица message_embeddings",
+                                        saved_vectors=self.store.count_comment_vectors(self.model)),
         )
         for pair in (current or {}).get("pairs", {}).values():
-            if tg_id not in (pair["left"], pair["right"]):
+            # An author on the other side of the average is not a similar one.
+            if tg_id not in (pair["left"], pair["right"]) or pair["similarity"] <= 0:
                 continue
             reverse = tg_id == pair["right"]
             other = pair["left"] if reverse else pair["right"]

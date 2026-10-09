@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
+from web_auth import logged_in
 
 from chunking.builder import build_chunk_set
 from db import repositories as repo
@@ -350,7 +350,7 @@ def client(run_db, database_url, tmp_path):
         frontend_dist=tmp_path / "missing",
         search_encoder=encoder,
     )
-    return TestClient(app), encoder
+    return logged_in(app), encoder
 
 
 def test_search_api_returns_the_users_messages(client):

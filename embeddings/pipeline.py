@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from db import embedding_repository as repo
+from db import repositories
 
 
 async def _model_id(sessions, spec) -> int:
@@ -68,6 +69,19 @@ async def embed_messages(
         lambda session, rows: repo.insert_message_embeddings(session, model_id, rows),
         batch_size,
     )
+
+
+async def embed_profile_messages(sessions, encoder, batch_size: int = 256) -> int:
+    """Embeds what is missing for the users whose comments were collected.
+
+    Cheap when nothing is missing: the model is not touched then.
+    """
+    async with sessions() as session:
+        users = await repositories.list_profile_users(session)
+    stored = 0
+    for user in users:
+        stored += await embed_messages(sessions, encoder, batch_size, user_id=user.id)
+    return stored
 
 
 async def embed_chunks(

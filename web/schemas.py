@@ -14,6 +14,10 @@ from parser.user_profile import (
 )
 
 
+class LoginRequest(BaseModel):
+    password: str
+
+
 class CollectRequest(BaseModel):
     username: str
 

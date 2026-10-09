@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 
@@ -31,6 +31,7 @@ from parser.position_comparison import AnalysisProgress, PositionResults
 from embeddings.e5 import PRODUCTION_MODEL, E5Encoder
 from services.profiles import ProfileNotFound, ProfileService
 from services.search import SemanticSearch
+from web.auth import LoginThrottle, auth_api, require_session
 from web.position_jobs import PositionJobs
 from web.frontend import frontend_dist as default_frontend_dist
 from web.frontend import mount_frontend
@@ -51,7 +52,11 @@ from web.schemas import (
 )
 
 # Operation ids are the function names: they name the generated frontend client.
-api = APIRouter(generate_unique_id_function=lambda route: route.name)
+# Every route here needs the session cookie; the login itself is in `auth_api`.
+api = APIRouter(
+    generate_unique_id_function=lambda route: route.name,
+    dependencies=[Depends(require_session)],
+)
 
 
 def _profiles(request: Request) -> ProfileService:
@@ -237,6 +242,30 @@ async def start_position_analysis(request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+class _LockedEncoder:
+    """The search encoder behind the lock that the search takes."""
+
+    def __init__(self, encoder, lock):
+        self.spec = encoder.spec
+        self._encoder = encoder
+        self._lock = lock
+
+    def encode_passages(self, texts):
+        with self._lock:
+            return self._encoder.encode_passages(texts)
+
+
+async def _embed_profile_comments(app) -> int:
+    # Imported here: the embedding tables need numpy, the web application
+    # must start without it.
+    from embeddings.pipeline import embed_profile_messages
+
+    return await embed_profile_messages(
+        app.state.database.sessions,
+        _LockedEncoder(app.state.search_encoder, app.state.search_lock),
+    )
+
+
 def create_app(
     database_url: str | None = None,
     channels: list[str] | None = None,
@@ -246,7 +275,14 @@ def create_app(
     position_service: PositionAnalysis | None = None,
     timezone: str = APP_TIMEZONE,
     search_encoder=None,
+    password: str | None = None,
 ) -> FastAPI:
+    if password is None:
+        password = os.getenv("WEB_PASSWORD", "")
+    if not password:
+        # Without a password the site would be open to anyone who reaches it.
+        raise RuntimeError("WEB_PASSWORD is not set: the site does not start without it")
+
     @asynccontextmanager
     async def lifespan(app):
         try:
@@ -259,9 +295,19 @@ def create_app(
 
     ZoneInfo(timezone)  # An unknown zone fails here, not on the first chart.
 
-    app = FastAPI(title="Telegram user profiles", lifespan=lifespan)
+    # The description of the API is not served: the site is reachable by anyone,
+    # and the frontend takes it from `frontend/openapi/openapi.json`.
+    app = FastAPI(
+        title="Telegram user profiles",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
     # No connection is made until a request needs the database.
     app.state.database = Database(database_url)
+    app.state.password = password
+    app.state.login_throttle = LoginThrottle()
     app.state.timezone = timezone
     app.state.channels = channels if channels is not None else CHANNELS
     app.state.channels_path = channels_path or CHANNELS_PATH
@@ -271,7 +317,7 @@ def create_app(
         app.state.analysis_store = AnalysisStore(database_url)
         position_service = LocalTextAnalysis(
             app.state.analysis_store,
-            model_cache_dir=Path(os.getenv("DATA_DIR", "data")) / "position-model-cache",
+            embed_missing=lambda: _embed_profile_comments(app),
         )
     app.state.position_jobs = PositionJobs(position_service)
     # The model the embedding tables were filled with; its weights are loaded
@@ -281,6 +327,7 @@ def create_app(
     )
     app.state.search_lock = threading.Lock()
 
+    app.include_router(auth_api, prefix="/api/v1")
     app.include_router(api, prefix="/api/v1")
     mount_frontend(app, frontend_dist or default_frontend_dist())
 

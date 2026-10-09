@@ -17,6 +17,9 @@ _logger = get_logger("political_coords")
 _MIN_MESSAGE_LENGTH = 40
 _BATCH_SIZE = 15
 _MAX_CONCURRENT_BATCHES = 3
+# OpenRouter answers 429 when its rate limit is hit; the batch is sent again.
+_RATE_LIMIT_RETRIES = 4
+_MAX_RETRY_DELAY = 60.0
 
 AXIS_LABELS: dict[str, str] = {
     "economic": "Экономика",
@@ -137,8 +140,18 @@ async def analyze_political_coords(
             async with semaphore:
                 return await _call_deepseek(api_key, batch, http_client, idx, len(batches))
 
-        tasks = [_limited_call(i, b) for i, b in enumerate(batches)]
-        results_lists = await asyncio.gather(*tasks)
+        tasks = [
+            asyncio.create_task(_limited_call(i, b)) for i, b in enumerate(batches)
+        ]
+        try:
+            results_lists = await asyncio.gather(*tasks)
+        except BaseException:
+            # gather leaves the other batches running; they must not outlive
+            # the client, nor keep spending requests on a failed analysis.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
         all_analyses: list[dict[str, Any]] = []
         for results in results_lists:
@@ -192,15 +205,28 @@ async def _call_deepseek(
         "political_coords batch %d/%d: sending %d messages", batch_idx + 1, total_batches, len(messages)
     )
 
-    resp = await client.post(
-        CHAT_COMPLETIONS_URL,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-    )
+    for attempt in range(_RATE_LIMIT_RETRIES + 1):
+        resp = await client.post(
+            CHAT_COMPLETIONS_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        if resp.status_code != 429 or attempt == _RATE_LIMIT_RETRIES:
+            break
+        delay = _retry_delay(resp, attempt)
+        _logger.warning(
+            "political_coords batch %d/%d: rate limited, retry %d/%d in %.0f s",
+            batch_idx + 1, total_batches, attempt + 1, _RATE_LIMIT_RETRIES, delay,
+        )
+        await asyncio.sleep(delay)
 
+    if resp.status_code == 429:
+        raise PoliticalCoordsError(
+            f"OpenRouter API error 429: rate limit, still hit after {_RATE_LIMIT_RETRIES} retries"
+        )
     if resp.status_code != 200:
         raise PoliticalCoordsError(
             f"OpenRouter API error {resp.status_code}"
@@ -209,6 +235,15 @@ async def _call_deepseek(
     data = resp.json()
     content = data["choices"][0]["message"]["content"]
     return _parse_ndjson_lines(content)
+
+
+def _retry_delay(resp: httpx.Response, attempt: int) -> float:
+    """Seconds to wait: what the server asks for, else 2, 4, 8, ..."""
+    try:
+        delay = float(resp.headers.get("Retry-After", ""))
+    except ValueError:
+        delay = 2.0 ** (attempt + 1)
+    return min(max(delay, 0.0), _MAX_RETRY_DELAY)
 
 
 def _parse_ndjson_lines(raw: str) -> list[dict[str, Any]]:

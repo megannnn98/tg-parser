@@ -43,7 +43,7 @@ function SimilarPair({ value }: { value: SimilarAuthor }) {
     <p className="text-sm text-muted-foreground">Уникальных комментариев: {value.left_comments} у выбранного автора, {value.right_comments} у сравниваемого.</p>
     <details>
       <summary className="cursor-pointer text-sm text-primary">Похожие высказывания: {value.display_username}</summary>
-      <p className="my-3 text-sm text-muted-foreground">Примеры выбраны среди 32 наиболее типичных комментариев каждого автора.</p>
+      <p className="my-3 text-sm text-muted-foreground">Самые близкие по смыслу пары комментариев двух авторов. Комментарии короче 80 символов не учитываются.</p>
       <div className="space-y-4">{value.examples.map((match, i) => <div key={i} className="space-y-2">
         <p className="text-sm">Сходство текстов: {match.similarity.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</p>
         <div className="grid gap-3 lg:grid-cols-2">

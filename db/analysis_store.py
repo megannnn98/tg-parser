@@ -136,6 +136,7 @@ class AnalysisStore:
         ).where(User.profile_collected_at.is_not(None))
         comments = (
             select(
+                Message.id,
                 User.tg_id,
                 Channel.username,
                 Message.tg_message_id,
@@ -164,17 +165,51 @@ class AnalysisStore:
             }
             rows = [
                 {
+                    "id": row_id,
                     "tg_id": tg_id,
                     "channel": channel,
                     "message_id": message_id,
                     "text": text,
                     "date": date.isoformat(),
                 }
-                for tg_id, channel, message_id, text, date in connection.execute(
+                for row_id, tg_id, channel, message_id, text, date in connection.execute(
                     comments
                 )
             ]
         return profiles, rows
+
+    def _comment_vectors(self, spec, *columns):
+        # Imported here: pgvector needs numpy, which the web application must
+        # be able to start without.
+        from db.embedding_models import EmbeddingModel, MessageEmbedding
+
+        return (
+            select(*(column(MessageEmbedding) for column in columns))
+            .join(EmbeddingModel, EmbeddingModel.id == MessageEmbedding.model_id)
+            .join(Message, Message.id == MessageEmbedding.message_id)
+            .join(User, User.id == Message.user_id)
+            .where(
+                User.profile_collected_at.is_not(None),
+                EmbeddingModel.name == spec.name,
+                EmbeddingModel.revision == spec.revision,
+                EmbeddingModel.pooling == spec.pooling,
+                EmbeddingModel.normalized == spec.normalized,
+                EmbeddingModel.input_prefix == spec.passage_prefix,
+            )
+        )
+
+    def comment_vectors(self, spec) -> dict:
+        """{messages.id: vector} of the profiles' comments embedded by `spec`."""
+        stmt = self._comment_vectors(
+            spec, lambda e: e.message_id, lambda e: e.embedding
+        )
+        with self.engine.connect() as connection:
+            return dict(connection.execute(stmt).tuples().all())
+
+    def count_comment_vectors(self, spec) -> int:
+        stmt = self._comment_vectors(spec, lambda e: func.count(e.message_id))
+        with self.engine.connect() as connection:
+            return connection.scalar(stmt)
 
     def manifest(self) -> str:
         """Changes when a profile or a comment of a profile is added."""

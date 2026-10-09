@@ -18,6 +18,8 @@ class MemoryStore:
         self._cache: dict[tuple[str, str], str] = {}
         self._comments: dict[tuple[int, str, int], dict] = {}
         self._profiles: dict[int, SourceProfile] = {}
+        # Stands for message_embeddings: {comment id: vector}.
+        self.vectors: dict[int, list[float]] = {}
         self._lock = threading.Lock()
 
     # Values go through JSON, as they do in the real store.
@@ -63,7 +65,9 @@ class MemoryStore:
             tg_id=user_id, display_username=f"@user{user_id}"
         )
         for message_id, text, date in rows:
-            self._comments[(user_id, "channel", message_id)] = {
+            key = (user_id, "channel", message_id)
+            self._comments[key] = {
+                "id": self._comments.get(key, {}).get("id", len(self._comments) + 1),
                 "tg_id": user_id,
                 "channel": "channel",
                 "message_id": message_id,
@@ -81,6 +85,19 @@ class MemoryStore:
                 c["message_id"],
             ),
         )
+
+    def embed(self, encode) -> int:
+        """Gives every comment without a vector `encode(text)`, as an embedding run does."""
+        missing = [c for c in self._comments.values() if c["id"] not in self.vectors]
+        for comment in missing:
+            self.vectors[comment["id"]] = encode(comment["text"])
+        return len(missing)
+
+    def comment_vectors(self, spec):
+        return dict(self.vectors)
+
+    def count_comment_vectors(self, spec):
+        return len(self.vectors)
 
     def manifest(self):
         return digest([sorted(self._profiles), sorted(self._comments)])

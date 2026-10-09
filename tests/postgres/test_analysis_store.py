@@ -3,11 +3,14 @@ from datetime import datetime, timezone
 
 import httpx
 import pytest
-from test_local_text_analysis import Embedder
+from sqlalchemy import text
+from test_embedding_pipeline import FakeEncoder
 from test_position_comparison import FakeEmbedder, FakeGateway
+from web_auth import session_cookies
 
 from db import repositories as repo
 from db.analysis_store import AnalysisStore
+from embeddings.e5 import PRODUCTION_MODEL
 from parser.local_text_analysis import LocalTextAnalysis
 from parser.position_analysis import PositionAnalysis
 from web.app import create_app
@@ -194,7 +197,9 @@ def test_position_analysis_runs_over_http_on_the_real_store(run_db, database_url
 
         service.gateway.extract = waiting_extract
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=session_cookies()
+        ) as client:
             missing = await client.get("/api/v1/users/5/position-comparisons")
             assert missing.status_code == 404
             result = await client.get("/api/v1/users/1/position-comparisons")
@@ -228,36 +233,38 @@ def test_position_analysis_runs_over_http_on_the_real_store(run_db, database_url
         store.close()
 
 
-def test_default_app_compares_local_embeddings_from_postgres(
-    run_db, database_url, tmp_path, monkeypatch
+def test_default_app_compares_stored_embeddings_of_the_profiles(
+    run_db, database_url, tmp_path
 ):
-    import parser.local_text_analysis as module
-
-    run_db(
-        _seed(
+    async def seed(sessions):
+        await _seed(
             None,
             {
                 1: [(1, "alpha", _utc(2026, 1, 1))],
                 2: [(2, "alpha", _utc(2026, 1, 2))],
+                4: [(4, "beta", _utc(2026, 1, 4))],
             },
-        )
-    )
+        )(sessions)
+        await _seed(
+            None, {3: [(3, "not a profile", _utc(2026, 1, 3))]}, collected=False
+        )(sessions)
 
-    class Local(Embedder):
-        _model = object()
+    run_db(seed)
 
-        def __init__(self, **kwargs):
-            super().__init__()
-
-    monkeypatch.setattr(module, "LocalCommentE5", Local)
+    encoder = FakeEncoder(PRODUCTION_MODEL)
     app = create_app(
-        database_url=database_url, channels=[], frontend_dist=tmp_path / "missing"
+        database_url=database_url,
+        channels=[],
+        frontend_dist=tmp_path / "missing",
+        search_encoder=encoder,
     )
     assert isinstance(app.state.position_jobs.service, LocalTextAnalysis)
 
     async def scenario():
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=session_cookies()
+        ) as client:
             assert (await client.post("/api/v1/position-analysis")).status_code == 202
             await app.state.position_jobs.task
             return (await client.get("/api/v1/users/1/position-comparisons")).json()
@@ -271,6 +278,44 @@ def test_default_app_compares_local_embeddings_from_postgres(
     assert result["method"] == "text_similarity"
     assert result["progress"]["state"] == "done"
     assert [(a["tg_id"], a["similarity"]) for a in result["similar_authors"]] == [
-        (2, 1.0)
+        (2, 1.0),
     ]
-    assert result["embeddings"]["saved_vectors"] == 1
+    # The analysis embedded what was missing, and only for the profiles.
+    assert encoder.encoded == ["alpha", "alpha", "beta"]
+    assert result["embeddings"]["saved_vectors"] == 3
+    assert "message_embeddings" in result["embeddings"]["storage"]
+
+
+def test_comment_vectors_are_those_of_the_asked_model_and_of_profiles(
+    run_db, database_url
+):
+    from dataclasses import replace
+
+    from embeddings.pipeline import embed_messages
+
+    other = replace(PRODUCTION_MODEL, revision="another-revision")
+
+    async def scenario(sessions):
+        await _seed(None, {1: [(1, "alpha beta", _utc(2026, 1, 1))]})(sessions)
+        await _seed(None, {2: [(2, "gamma", _utc(2026, 1, 2))]}, collected=False)(
+            sessions
+        )
+        await embed_messages(sessions, FakeEncoder(PRODUCTION_MODEL))
+        async with sessions.begin() as session:
+            await session.execute(
+                text("DELETE FROM message_embeddings WHERE message_id = 1")
+            )
+        await embed_messages(sessions, FakeEncoder(other))
+
+    run_db(scenario)
+    store = AnalysisStore(database_url)
+    try:
+        # Message 1 has a vector of the other model only, message 2 is no profile's.
+        assert store.comment_vectors(PRODUCTION_MODEL) == {}
+        assert store.count_comment_vectors(PRODUCTION_MODEL) == 0
+        vectors = store.comment_vectors(other)
+        assert list(vectors) == [1] and len(vectors[1]) == 384
+        assert store.count_comment_vectors(other) == 1
+        assert [c["id"] for c in store.load_sources()[1]] == [1]
+    finally:
+        store.close()
