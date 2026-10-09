@@ -239,6 +239,7 @@ def test_default_app_compares_stored_embeddings_of_the_profiles(
             {
                 1: [(1, "alpha", _utc(2026, 1, 1))],
                 2: [(2, "alpha", _utc(2026, 1, 2))],
+                4: [(4, "beta", _utc(2026, 1, 4))],
             },
         )(sessions)
         await _seed(
@@ -272,11 +273,12 @@ def test_default_app_compares_stored_embeddings_of_the_profiles(
     assert result["method"] == "text_similarity"
     assert result["progress"]["state"] == "done"
     assert [(a["tg_id"], a["similarity"]) for a in result["similar_authors"]] == [
-        (2, 1.0)
+        (2, 1.0),
+        (4, -1.0),
     ]
     # The analysis embedded what was missing, and only for the profiles.
-    assert encoder.encoded == ["alpha", "alpha"]
-    assert result["embeddings"]["saved_vectors"] == 2
+    assert encoder.encoded == ["alpha", "alpha", "beta"]
+    assert result["embeddings"]["saved_vectors"] == 3
     assert "message_embeddings" in result["embeddings"]["storage"]
 
 

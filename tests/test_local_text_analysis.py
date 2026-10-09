@@ -59,9 +59,44 @@ def test_stored_vectors_rank_authors_without_openrouter(tmp_path, monkeypatch):
     assert service._embed_missing.stored == [6, 0]
 
 
+def test_what_all_authors_share_is_removed_before_comparing(tmp_path):
+    # Uncentered, every pair here has a cosine above 0.97.
+    close = {"a": [1, 0.1], "b": [1, 0.12], "c": [1, -0.1]}
+    for user, text in enumerate(close, start=1):
+        create_source(tmp_path, user, [(1, text, "2026-01-01")])
+    service = analysis(tmp_path, close.__getitem__)
+    asyncio.run(service.run())
+    near, far = service.results(1).similar_authors
+    assert (near.tg_id, far.tg_id) == (2, 3)
+    assert near.similarity > 0.9 and far.similarity < -0.9
+    assert near.examples[0].similarity == near.similarity
+
+
+@pytest.mark.parametrize("texts_of_first", [1, 4])
+def test_a_prolific_author_does_not_define_what_is_shared(tmp_path, texts_of_first):
+    by_letter = {"a": [1, 0], "b": [0, 1], "c": [0.1, 1]}
+    create_source(tmp_path, 1, [(i, f"a{i}", "2026-01-01") for i in range(texts_of_first)])
+    create_source(tmp_path, 2, [(1, "b", "2026-01-01")])
+    create_source(tmp_path, 3, [(1, "c", "2026-01-01")])
+    service = analysis(tmp_path, lambda text: by_letter[text[0]])
+    asyncio.run(service.run())
+    # The same whether the first author wrote one such comment or four.
+    assert service.results(2).similar_authors[0].similarity == 0.9888
+
+
+def test_authors_who_only_say_what_everyone_says_are_not_ranked(tmp_path):
+    for user in (1, 2, 3):
+        create_source(tmp_path, user, [(1, "alpha", "2026-01-01")])
+    service = analysis(tmp_path, lambda text: [0.6, 0.8])
+    asyncio.run(service.run())
+    assert service.results(1).progress.state == "done"
+    assert not service.results(1).similar_authors
+
+
 def test_comments_without_a_vector_are_left_out(tmp_path):
     create_source(tmp_path, 1, [(1, "alpha", "2026-01-01")])
     create_source(tmp_path, 2, [(1, "alpha", "2026-01-01")])
+    create_source(tmp_path, 4, [(1, "beta", "2026-01-01")])
     store = store_for(tmp_path)
     store.embed(vector)
     create_source(tmp_path, 2, [(2, "opposite", "2026-01-02")])
@@ -69,9 +104,9 @@ def test_comments_without_a_vector_are_left_out(tmp_path):
     service = LocalTextAnalysis(store, MODEL)  # Nothing embeds the new comments.
     asyncio.run(service.run())
     result = service.results(1)
-    assert [(a.tg_id, a.similarity, a.right_comments) for a in result.similar_authors] == [(2, 1, 1)]
-    assert result.progress.total_comments == 4
-    assert result.progress.processed_comments == 2
+    assert [(a.tg_id, a.similarity, a.right_comments) for a in result.similar_authors] == [(2, 1, 1), (4, -1, 1)]
+    assert result.progress.total_comments == 5
+    assert result.progress.processed_comments == 3
 
 
 def test_no_vectors_at_all_says_how_to_build_them(tmp_path):
@@ -106,9 +141,11 @@ def test_missing_numpy_explains_how_to_rebuild_instead_of_breaking_web(tmp_path,
 def test_failed_update_keeps_published_similarity(tmp_path):
     for user in (1, 2):
         create_source(tmp_path, user, [(1, "alpha", "2026-01-01")])
+    create_source(tmp_path, 3, [(1, "beta", "2026-01-01")])
     service = analysis(tmp_path)
     asyncio.run(service.run())
     old = service.results(1).similar_authors
+    assert [a.tg_id for a in old] == [2, 3]
     create_source(tmp_path, 1, [(2, "beta", "2026-01-02")])
     service._embed_missing.fail = True
     with pytest.raises(RuntimeError, match="local model failure"):
@@ -121,7 +158,7 @@ def test_failed_update_keeps_published_similarity(tmp_path):
 
 def test_reverse_examples_and_old_llm_cache_are_not_mixed(tmp_path):
     create_source(tmp_path, 1, [(1, "alpha", "2026-01-01")])
-    create_source(tmp_path, 2, [(1, "paraphrase", "2026-01-02")])
+    create_source(tmp_path, 2, [(1, "beta", "2026-01-02")])
     service = analysis(tmp_path)
     service.store.put("published", "latest", {"version": "legacy", "progress": {"state": "done"}})
     assert not service.results(1).similar_authors

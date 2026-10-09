@@ -24,7 +24,7 @@ class LocalTextAnalysis(PositionAnalysis):
         self.model = model
         self._embed_missing = embed_missing
         self._vectors = f"{model.name}@{model.revision}:{model.passage_prefix.strip()}{model.pooling}:l2"
-        self.version = digest(["local-comment-similarity:centroid:32-examples:v2", self._vectors])
+        self.version = digest(["local-comment-similarity:centered-centroid:32-examples:v3", self._vectors])
 
     def ensure_provider_unchanged(self):
         pass
@@ -72,6 +72,25 @@ class LocalTextAnalysis(PositionAnalysis):
                            cached_embeddings=len(rows), processed_comments=len(comments),
                            cached_comments=len(comments), activity="Эмбеддинги комментариев загружены")
         return comments, indices, matrix
+
+    @staticmethod
+    def _centered(comments, indices, matrix):
+        """The rows without what all authors share, at unit length again.
+
+        E5 vectors of any two texts are close, and averaging an author's
+        comments leaves little else: uncentered, every pair of authors scores
+        about 0.99. The shared part is the mean of the authors' own means, so
+        that a prolific author does not define it. A row equal to it carries
+        no signal and becomes zero.
+        """
+        import numpy as np
+        by_user = {}
+        for comment in comments:
+            by_user.setdefault(comment["tg_id"], set()).add(indices[digest(comment["text"])])
+        shared = np.mean([matrix[sorted(rows)].mean(axis=0) for rows in by_user.values()], axis=0)
+        centered = matrix - shared
+        norms = np.linalg.norm(centered, axis=1, keepdims=True)
+        return np.divide(centered, norms, out=np.zeros_like(centered), where=norms > 1e-6)
 
     @staticmethod
     def _author_profiles(comments, indices, matrix):
@@ -125,6 +144,7 @@ class LocalTextAnalysis(PositionAnalysis):
                 comments = [c for c in comments if c["text"] and c["text"].strip()]
                 await self._report(checkpoint, total_comments=len(comments), activity="Комментарии прочитаны")
                 comments, indices, matrix = await self._embed_comments(comments, checkpoint)
+                matrix = await asyncio.to_thread(self._centered, comments, indices, matrix)
                 vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, matrix)
                 users = sorted(vectors)
                 await self._report(checkpoint, phase="comparisons", total_pairs=len(users) * (len(users) - 1) // 2,
