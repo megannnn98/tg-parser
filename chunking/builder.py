@@ -30,11 +30,13 @@ async def build_chunk_set(
     tokenizer_name: str,
     count_tokens: Callable[[list[str]], list[int]],
     force: bool = False,
+    only_user_ids: list[int] | None = None,
 ) -> BuildResult:
     """Brings the chunks of (strategy, parameters) up to date.
 
     Only users with messages not yet covered are rebuilt, unless `force`.
-    Each user is one transaction.
+    `only_user_ids` (users.id) limits the run to those users. Each user is one
+    transaction.
     """
     # Validates the strategy and its parameters before anything is written.
     build_chunks(strategy, parameters, [])
@@ -48,6 +50,8 @@ async def build_chunk_set(
             user_ids = await repo.users_with_messages(session)
         else:
             user_ids = await repo.users_with_stale_chunks(session, chunk_set_id)
+    if only_user_ids is not None:
+        user_ids = [user_id for user_id in user_ids if user_id in set(only_user_ids)]
 
     written = 0
     for user_id in user_ids:

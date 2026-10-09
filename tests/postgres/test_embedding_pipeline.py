@@ -354,3 +354,63 @@ def test_cosine_inner_product_and_l2_rank_normalized_vectors_alike(run_db):
     # is one minus it.
     for (_, cosine), (_, inner) in zip(orders["cosine"], orders["inner"]):
         assert cosine == pytest.approx(1 + inner, abs=1e-5)
+
+
+def test_a_trial_run_can_be_limited_to_one_user(run_db):
+    params = {"max_messages": 2, "same_channel": True}
+
+    async def scenario(sessions):
+        first = await _seed(sessions, COMMENTS)
+        await _seed(sessions, [(50, "чужой комментарий")], tg_id=2)
+        built = await build_chunk_set(
+            sessions, "fixed_messages", params, "words", _words, only_user_ids=[first]
+        )
+        async with sessions() as session:
+            chunk_owners = set(await session.scalars(select(Chunk.user_id)))
+        # The full build then adds only the user left out before.
+        whole = await build_chunk_set(sessions, "fixed_messages", params, "words", _words)
+
+        encoder = FakeEncoder()
+        counts = [
+            await embed_messages(sessions, encoder, user_id=first),
+            await embed_chunks(sessions, encoder, built.chunk_set_id, user_id=first),
+            # Again, and forced: still only that user's rows.
+            await embed_messages(sessions, encoder, user_id=first),
+            await embed_chunks(sessions, encoder, built.chunk_set_id, user_id=first),
+            await embed_messages(sessions, encoder, user_id=first, force=True),
+        ]
+        leaked = "чужой комментарий" in encoder.encoded
+        async with sessions() as session:
+            message_owners = set(
+                await session.scalars(
+                    select(Message.user_id).join(
+                        MessageEmbedding, MessageEmbedding.message_id == Message.id
+                    )
+                )
+            )
+            embedded_chunk_owners = set(
+                await session.scalars(
+                    select(Chunk.user_id).join(
+                        ChunkEmbedding, ChunkEmbedding.chunk_id == Chunk.id
+                    )
+                )
+            )
+        # The unrestricted run embeds the rest; forcing one user afterwards
+        # leaves the other user's vector in place.
+        everyone = await embed_messages(sessions, encoder)
+        await embed_messages(sessions, encoder, user_id=first, force=True)
+        async with sessions() as session:
+            total = await session.scalar(select(func.count()).select_from(MessageEmbedding))
+        return (built, whole, counts, chunk_owners, message_owners,
+                embedded_chunk_owners, first, leaked, everyone, total)
+
+    (built, whole, counts, chunk_owners, message_owners, embedded_chunk_owners,
+     first, leaked, everyone, total) = run_db(scenario)
+
+    assert (built.users_rebuilt, built.chunks_written) == (1, 2)
+    assert chunk_owners == {first}
+    assert (whole.users_rebuilt, whole.chunks_written) == (1, 1)
+    assert counts == [3, 2, 0, 0, 3]
+    assert message_owners == embedded_chunk_owners == {first}
+    assert not leaked
+    assert (everyone, total) == (1, 4)

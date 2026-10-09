@@ -53,33 +53,35 @@ async def get_or_create_model(
 
 
 async def messages_without_embedding(
-    session: AsyncSession, model_id: int, limit: int
+    session: AsyncSession, model_id: int, limit: int, user_id: int | None = None
 ) -> list[tuple[int, str]]:
     embedded = select(MessageEmbedding.message_id).where(
         MessageEmbedding.model_id == model_id,
         MessageEmbedding.message_id == Message.id,
     )
-    stmt = (
-        select(Message.id, Message.text)
-        .where(~embedded.exists())
-        .order_by(Message.id)
-        .limit(limit)
-    )
+    stmt = select(Message.id, Message.text).where(~embedded.exists())
+    if user_id is not None:
+        stmt = stmt.where(Message.user_id == user_id)
+    stmt = stmt.order_by(Message.id).limit(limit)
     return [tuple(row) for row in await session.execute(stmt)]
 
 
 async def chunks_without_embedding(
-    session: AsyncSession, model_id: int, chunk_set_id: int, limit: int
+    session: AsyncSession,
+    model_id: int,
+    chunk_set_id: int,
+    limit: int,
+    user_id: int | None = None,
 ) -> list[tuple[int, str]]:
     embedded = select(ChunkEmbedding.chunk_id).where(
         ChunkEmbedding.model_id == model_id, ChunkEmbedding.chunk_id == Chunk.id
     )
-    stmt = (
-        select(Chunk.id, Chunk.text)
-        .where(Chunk.chunk_set_id == chunk_set_id, ~embedded.exists())
-        .order_by(Chunk.id)
-        .limit(limit)
+    stmt = select(Chunk.id, Chunk.text).where(
+        Chunk.chunk_set_id == chunk_set_id, ~embedded.exists()
     )
+    if user_id is not None:
+        stmt = stmt.where(Chunk.user_id == user_id)
+    stmt = stmt.order_by(Chunk.id).limit(limit)
     return [tuple(row) for row in await session.execute(stmt)]
 
 
@@ -115,16 +117,25 @@ async def insert_chunk_embeddings(
     return await _insert(session, ChunkEmbedding, "chunk_id", model_id, rows)
 
 
-async def delete_message_embeddings(session: AsyncSession, model_id: int) -> None:
-    await session.execute(
-        delete(MessageEmbedding).where(MessageEmbedding.model_id == model_id)
-    )
+async def delete_message_embeddings(
+    session: AsyncSession, model_id: int, user_id: int | None = None
+) -> None:
+    stmt = delete(MessageEmbedding).where(MessageEmbedding.model_id == model_id)
+    if user_id is not None:
+        stmt = stmt.where(
+            MessageEmbedding.message_id.in_(
+                select(Message.id).where(Message.user_id == user_id)
+            )
+        )
+    await session.execute(stmt)
 
 
 async def delete_chunk_embeddings(
-    session: AsyncSession, model_id: int, chunk_set_id: int
+    session: AsyncSession, model_id: int, chunk_set_id: int, user_id: int | None = None
 ) -> None:
     chunks = select(Chunk.id).where(Chunk.chunk_set_id == chunk_set_id)
+    if user_id is not None:
+        chunks = chunks.where(Chunk.user_id == user_id)
     await session.execute(
         delete(ChunkEmbedding).where(
             ChunkEmbedding.model_id == model_id, ChunkEmbedding.chunk_id.in_(chunks)
