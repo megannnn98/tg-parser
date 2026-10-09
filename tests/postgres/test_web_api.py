@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from fastapi.testclient import TestClient
+from web_auth import logged_in
 
 from db import repositories as repo
 from parser.political_coords import AggregatedCoords, AxisStats
@@ -49,7 +49,7 @@ def client(run_db, database_url, tmp_path):
             frontend_dist=tmp_path / "missing",
             timezone=tz,
         )
-        return TestClient(app)
+        return logged_in(app)
 
     return make
 

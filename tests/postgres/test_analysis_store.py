@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 from test_embedding_pipeline import FakeEncoder
 from test_position_comparison import FakeEmbedder, FakeGateway
+from web_auth import session_cookies
 
 from db import repositories as repo
 from db.analysis_store import AnalysisStore
@@ -196,7 +197,9 @@ def test_position_analysis_runs_over_http_on_the_real_store(run_db, database_url
 
         service.gateway.extract = waiting_extract
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=session_cookies()
+        ) as client:
             missing = await client.get("/api/v1/users/5/position-comparisons")
             assert missing.status_code == 404
             result = await client.get("/api/v1/users/1/position-comparisons")
@@ -259,7 +262,9 @@ def test_default_app_compares_stored_embeddings_of_the_profiles(
 
     async def scenario():
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://test", cookies=session_cookies()
+        ) as client:
             assert (await client.post("/api/v1/position-analysis")).status_code == 202
             await app.state.position_jobs.task
             return (await client.get("/api/v1/users/1/position-comparisons")).json()

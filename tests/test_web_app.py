@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from web_auth import logged_in
 
 from parser.user_collector import ChannelProgress, UserCollectResult
 from web.app import create_app
@@ -53,7 +54,7 @@ def test_start_collect_runs_job_and_status_reports_done(tmp_path: Path):
     registry = JobRegistry(collect_fn=fake_collect)
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"], job_registry=registry)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/collect", json={"username": "@vasya"})
         assert resp.status_code == 202
         job_id = resp.json()["job_id"]
@@ -72,7 +73,7 @@ def test_start_collect_reports_error_status_on_failure(tmp_path: Path):
     registry = JobRegistry(collect_fn=fake_collect)
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"], job_registry=registry)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/collect", json={"username": "@ghost"})
         job_id = resp.json()["job_id"]
 
@@ -85,7 +86,7 @@ def test_start_collect_reports_error_status_on_failure(tmp_path: Path):
 def test_start_collect_rejects_empty_username(tmp_path: Path):
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"])
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/collect", json={"username": "   "})
 
     assert resp.status_code == 400
@@ -97,7 +98,7 @@ def test_start_collect_rejects_request_while_a_job_is_running(tmp_path: Path):
         channels=["chan_a"], job_registry=_AlwaysBusyRegistry()
     )
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/collect", json={"username": "@vasya"})
 
     assert resp.status_code == 409
@@ -125,7 +126,7 @@ def test_cancel_collect_stops_running_job(tmp_path: Path):
     registry = JobRegistry(collect_fn=blocking_collect)
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"], job_registry=registry)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/collect", json={"username": "@vasya"})
         job_id = resp.json()["job_id"]
 
@@ -144,7 +145,7 @@ def test_cancel_collect_stops_running_job(tmp_path: Path):
 def test_cancel_collect_returns_404_for_unknown_job(tmp_path: Path):
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"])
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/collect/does-not-exist/cancel")
 
     assert resp.status_code == 404
@@ -153,7 +154,7 @@ def test_cancel_collect_returns_404_for_unknown_job(tmp_path: Path):
 def test_collect_status_returns_404_for_unknown_job(tmp_path: Path):
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"])
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.get("/api/v1/collect/does-not-exist/status")
 
     assert resp.status_code == 404
@@ -168,7 +169,7 @@ def test_save_channels_list_persists_and_updates_app_state(tmp_path: Path):
         channels=["old_channel"], channels_path=channels_path
     )
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/channels", json={"channels_text": "chan_a\n@chan_b\n"})
 
     assert resp.status_code == 200
@@ -188,7 +189,7 @@ def test_save_channels_list_rejects_invalid_line(tmp_path: Path):
         channels=["old_channel"], channels_path=channels_path
     )
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/channels", json={"channels_text": "chan a"})
 
     assert resp.status_code == 400
@@ -200,7 +201,7 @@ def test_save_channels_list_rejects_invalid_line(tmp_path: Path):
 def test_api_v1_returns_channels(tmp_path: Path):
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a", "chan_b"])
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.get("/api/v1/channels")
 
     assert resp.status_code == 200
@@ -215,7 +216,7 @@ def test_api_v1_saves_channels(tmp_path: Path):
         channels=["old_channel"], channels_path=channels_path
     )
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/channels", json={"channels_text": "chan_a\n"})
 
     assert resp.status_code == 200
@@ -230,7 +231,7 @@ def test_api_v1_collect_runs_job_and_reports_status(tmp_path: Path):
     registry = JobRegistry(collect_fn=fake_collect)
     app = create_app(database_url=_NO_DATABASE, channels=["chan_a"], job_registry=registry)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/api/v1/collect", json={"username": "@vasya"})
         assert resp.status_code == 202
         job_id = resp.json()["job_id"]
@@ -281,7 +282,7 @@ def test_frontend_pages_get_index_html(tmp_path: Path, url: str):
     dist = _create_dist(tmp_path / "dist")
     app = create_app(database_url=_NO_DATABASE, channels=[], frontend_dist=dist)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.get(url)
 
     assert resp.status_code == 200
@@ -293,7 +294,7 @@ def test_frontend_serves_build_files(tmp_path: Path):
     dist = _create_dist(tmp_path / "dist")
     app = create_app(database_url=_NO_DATABASE, channels=[], frontend_dist=dist)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.get("/assets/app.js")
 
     assert resp.status_code == 200
@@ -305,7 +306,7 @@ def test_frontend_never_serves_files_outside_the_build(tmp_path: Path):
     (tmp_path / "secret.txt").write_text("secret")
     app = create_app(database_url=_NO_DATABASE, channels=[], frontend_dist=dist)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.get("/%2e%2e/secret.txt")
 
     assert "secret" not in resp.text
@@ -315,7 +316,7 @@ def test_unknown_api_route_is_404_not_a_page(tmp_path: Path):
     dist = _create_dist(tmp_path / "dist")
     app = create_app(database_url=_NO_DATABASE, channels=[], frontend_dist=dist)
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.get("/api/v1/nope")
 
     assert resp.status_code == 404
@@ -325,7 +326,7 @@ def test_unknown_api_route_is_404_not_a_page(tmp_path: Path):
 def test_missing_frontend_build_says_how_to_get_it(tmp_path: Path):
     app = create_app(database_url=_NO_DATABASE, channels=[], frontend_dist=tmp_path / "missing")
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.get("/")
 
     assert resp.status_code == 503
@@ -335,7 +336,7 @@ def test_missing_frontend_build_says_how_to_get_it(tmp_path: Path):
 def test_old_paths_are_gone(tmp_path: Path):
     app = create_app(database_url=_NO_DATABASE, channels=[], frontend_dist=tmp_path / "missing")
 
-    with TestClient(app) as client:
+    with logged_in(app) as client:
         resp = client.post("/collect", json={"username": "@vasya"})
 
     assert resp.status_code in (404, 405)

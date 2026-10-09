@@ -212,6 +212,13 @@ JSON API живёт под `/api/v1` (схема — `http://localhost:8000/docs
 
 Часы и дни активности считаются в поясе `APP_TIMEZONE`.
 
+Сайт закрыт паролем из переменной `WEB_PASSWORD`: без неё веб-приложение не запускается.
+Задайте её в `.env.docker` (для запуска без Docker — в `.env`). После входа браузер хранит
+подписанную cookie 30 дней; смена пароля завершает все сессии. Пять неверных паролей с
+одного адреса за пять минут закрывают вход с этого адреса до конца этих пяти минут.
+Без входа доступны только страница входа и файлы сборки, любой запрос к `/api/v1` отвечает
+`401`.
+
 Если порт `8000` занят: `WEB_PORT=8010 ./scripts/run.sh web`.
 
 Без Docker:
@@ -627,6 +634,7 @@ docker compose exec -T postgres pg_restore -U telegram -d telegram_comments --cl
 | `API_ID`, `API_HASH` | — | API-креды Telegram, обязательны |
 | `DATABASE_URL` | — | Адрес PostgreSQL, `postgresql+asyncpg://user:password@host:5432/database`; обязателен |
 | `APP_TIMEZONE` | `Asia/Almaty` | Пояс, в котором считаются часы и дни активности |
+| `WEB_PASSWORD` | — | Пароль для входа на сайт; обязателен для режима `web` |
 | `DATA_DIR` | `data` | Каталог для весов моделей и журналов |
 | `CHANNELS_PATH` | `channels.json` | Файл со списком каналов (его же дописывает `discover-channels`) |
 | `LIMIT` | `1000` | Сообщений на источник для `collect`, `find-user` (история) и `discover-channels`; в `user-comments` не используется |

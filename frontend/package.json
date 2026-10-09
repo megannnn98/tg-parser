@@ -11,7 +11,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "generate:api": "cd .. && API_ID=${API_ID:-0} ${PYTHON:-python} -c \"import asyncio, json; asyncio.set_event_loop(asyncio.new_event_loop()); from web.app import app; print(json.dumps(app.openapi()))\" > frontend/openapi/openapi.json && cd frontend && openapi-ts"
+    "generate:api": "cd .. && API_ID=${API_ID:-0} WEB_PASSWORD=${WEB_PASSWORD:-unused} ${PYTHON:-python} -c \"import asyncio, json; asyncio.set_event_loop(asyncio.new_event_loop()); from web.app import app; print(json.dumps(app.openapi()))\" > frontend/openapi/openapi.json && cd frontend && openapi-ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.66.8",
