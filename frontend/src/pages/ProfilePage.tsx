@@ -6,6 +6,7 @@ import { analyzePolitical, getUser, type Profile } from "@/api/generated";
 import { DailyChart, HourlyChart, WeekHeatmap } from "@/components/ActivityCharts";
 import { ChannelShares } from "@/components/ChannelShares";
 import { CollectProgress } from "@/components/CollectProgress";
+import { CommentSearch } from "@/components/CommentSearch";
 import { PoliticalBars } from "@/components/PoliticalBars";
 import { PositionComparisons } from "@/components/PositionComparisons";
 import { QueryState } from "@/components/QueryState";
@@ -121,6 +122,8 @@ export function ProfilePage() {
           {profile.total_messages === 0 ? (
             <p className="text-sm text-muted-foreground">Комментарии в выбранных каналах не найдены.</p>
           ) : null}
+
+          {profile.total_messages > 0 ? <CommentSearch key={tgId} tgId={tgId} /> : null}
 
           <PositionComparisons tgId={tgId} hasComments={profile.total_messages > 0} />
 

@@ -52,6 +52,24 @@ async def get_or_create_chunk_set(
     return (await session.execute(stmt)).scalar_one()
 
 
+async def find_chunk_set_id(
+    session: AsyncSession,
+    strategy: str,
+    strategy_version: int,
+    parameters: dict,
+    tokenizer: str,
+) -> int | None:
+    """The set built with exactly this strategy, parameters and tokenizer."""
+    return await session.scalar(
+        select(ChunkSet.id).where(
+            ChunkSet.strategy == strategy,
+            ChunkSet.strategy_version == strategy_version,
+            ChunkSet.parameters_hash == parameters_hash(parameters),
+            ChunkSet.tokenizer == tokenizer,
+        )
+    )
+
+
 async def find_chunk_sets(
     session: AsyncSession, strategy: str | None = None
 ) -> list[ChunkSet]:

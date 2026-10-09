@@ -1,7 +1,10 @@
 """SQL of embedding models and vectors. Callers own the transaction."""
 from __future__ import annotations
 
-from sqlalchemy import delete, func, select
+from dataclasses import dataclass
+from datetime import datetime
+
+from sqlalchemy import delete, func, null, select, true
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +14,7 @@ from db.embedding_models import (
     EmbeddingModel,
     MessageEmbedding,
 )
-from db.models import Chunk, Message
+from db.models import Channel, Chunk, ChunkMessageLink, Message
 
 # A row carries a whole vector: keep statements small.
 _BATCH_ROWS = 200
@@ -203,3 +206,126 @@ async def search_chunks(
         .limit(limit)
     )
     return [(chunk_id, float(score)) for chunk_id, score in await session.execute(stmt)]
+
+
+@dataclass(frozen=True)
+class RankedMessage:
+    message_id: int
+    channel: str
+    tg_message_id: int
+    date: datetime
+    text: str
+    # Cosine similarity of the message itself to the query.
+    message_score: float
+    # Of the best chunk holding the message; None when it is in no chunk yet.
+    chunk_score: float | None
+    score: float
+
+
+async def find_model_id(
+    session: AsyncSession,
+    name: str,
+    revision: str,
+    pooling: str,
+    normalized: bool,
+    input_prefix: str,
+) -> int | None:
+    """The stored model with exactly this identity, if any vectors were made by it."""
+    return await session.scalar(
+        select(EmbeddingModel.id).where(
+            EmbeddingModel.name == name,
+            EmbeddingModel.revision == revision,
+            EmbeddingModel.pooling == pooling,
+            EmbeddingModel.normalized == normalized,
+            EmbeddingModel.input_prefix == input_prefix,
+        )
+    )
+
+
+async def count_user_message_embeddings(
+    session: AsyncSession, model_id: int, user_id: int
+) -> int:
+    return await session.scalar(
+        select(func.count())
+        .select_from(MessageEmbedding)
+        .join(Message, Message.id == MessageEmbedding.message_id)
+        .where(MessageEmbedding.model_id == model_id, Message.user_id == user_id)
+    )
+
+
+async def rank_messages(
+    session: AsyncSession,
+    model_id: int,
+    user_id: int,
+    query_vector,
+    limit: int,
+    chunk_set_id: int | None = None,
+    context_weight: float = 0.0,
+) -> list[RankedMessage]:
+    """The user's messages nearest to the query, optionally helped by their chunks.
+
+    score = (1 - context_weight) * message_score + context_weight * chunk_score
+
+    where chunk_score is the similarity of the best chunk of `chunk_set_id`
+    that holds the message. A message in no chunk is scored by itself alone.
+    Without a chunk set this is plain message search. Exact scan, one user.
+    """
+    message_score = 1 - MessageEmbedding.embedding.cosine_distance(query_vector)
+    stmt = (
+        select(
+            Message.id,
+            Channel.username,
+            Message.tg_message_id,
+            Message.date,
+            Message.text,
+            message_score.label("message_score"),
+        )
+        .join(MessageEmbedding, MessageEmbedding.message_id == Message.id)
+        .join(Channel, Channel.id == Message.channel_id)
+        .where(MessageEmbedding.model_id == model_id, Message.user_id == user_id)
+    )
+    if chunk_set_id is None or context_weight == 0:
+        score = message_score
+        stmt = stmt.add_columns(null())
+    else:
+        # The best chunk of each message, looked up by index for every message
+        # (LATERAL). Joining an aggregate over all the user's chunks instead
+        # reads better, but the planner underestimates it and falls into a
+        # nested loop without an index: 11 s instead of 0.2 s on 24,000 messages.
+        context = (
+            select(
+                func.max(
+                    1 - ChunkEmbedding.embedding.cosine_distance(query_vector)
+                ).label("score")
+            )
+            .select_from(ChunkMessageLink)
+            .join(Chunk, Chunk.id == ChunkMessageLink.chunk_id)
+            .join(ChunkEmbedding, ChunkEmbedding.chunk_id == Chunk.id)
+            .where(
+                ChunkMessageLink.message_id == Message.id,
+                Chunk.chunk_set_id == chunk_set_id,
+                ChunkEmbedding.model_id == model_id,
+            )
+            .lateral("context")
+        )
+        stmt = stmt.outerjoin(context, true())
+        score = (1 - context_weight) * message_score + context_weight * func.coalesce(
+            context.c.score, message_score
+        )
+        stmt = stmt.add_columns(context.c.score)
+    stmt = stmt.add_columns(score.label("score")).order_by(
+        score.desc(), Message.id
+    ).limit(limit)
+    return [
+        RankedMessage(
+            message_id=row[0],
+            channel=row[1],
+            tg_message_id=row[2],
+            date=row[3],
+            text=row[4],
+            message_score=float(row[5]),
+            chunk_score=None if row[6] is None else float(row[6]),
+            score=float(row[7]),
+        )
+        for row in await session.execute(stmt)
+    ]

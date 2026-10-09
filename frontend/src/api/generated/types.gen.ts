@@ -532,6 +532,70 @@ export type ResolvedUser = {
 };
 
 /**
+ * SearchHit
+ */
+export type SearchHit = {
+    /**
+     * Message Id
+     */
+    message_id: number;
+    /**
+     * Tg Message Id
+     */
+    tg_message_id: number;
+    /**
+     * Channel
+     */
+    channel: string;
+    /**
+     * Date
+     */
+    date: string;
+    /**
+     * Text
+     */
+    text: string;
+    /**
+     * Message Score
+     */
+    message_score: number;
+    /**
+     * Chunk Score
+     */
+    chunk_score: number | null;
+    /**
+     * Score
+     */
+    score: number;
+};
+
+/**
+ * SearchResponse
+ */
+export type SearchResponse = {
+    /**
+     * Query
+     */
+    query: string;
+    /**
+     * Results
+     */
+    results: Array<SearchHit>;
+    /**
+     * Indexed Messages
+     */
+    indexed_messages: number;
+    /**
+     * Total Messages
+     */
+    total_messages: number;
+    /**
+     * Used Context
+     */
+    used_context: boolean;
+};
+
+/**
  * SimilarAuthor
  */
 export type SimilarAuthor = {
@@ -891,6 +955,49 @@ export type GetPositionComparisonsResponses = {
 };
 
 export type GetPositionComparisonsResponse = GetPositionComparisonsResponses[keyof GetPositionComparisonsResponses];
+
+export type SearchUserCommentsData = {
+    body?: never;
+    path: {
+        /**
+         * Tg Id
+         */
+        tg_id: number;
+    };
+    query: {
+        /**
+         * Q
+         */
+        q: string;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Context
+         */
+        context?: boolean;
+    };
+    url: '/api/v1/users/{tg_id}/search';
+};
+
+export type SearchUserCommentsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type SearchUserCommentsError = SearchUserCommentsErrors[keyof SearchUserCommentsErrors];
+
+export type SearchUserCommentsResponses = {
+    /**
+     * Successful Response
+     */
+    200: SearchResponse;
+};
+
+export type SearchUserCommentsResponse = SearchUserCommentsResponses[keyof SearchUserCommentsResponses];
 
 export type StartPositionAnalysisData = {
     body?: never;

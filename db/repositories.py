@@ -154,6 +154,12 @@ async def get_user_by_tg_id(session: AsyncSession, tg_id: int) -> User | None:
     return await session.scalar(select(User).where(User.tg_id == tg_id))
 
 
+async def count_user_messages(session: AsyncSession, user_id: int) -> int:
+    return await session.scalar(
+        select(func.count()).select_from(Message).where(Message.user_id == user_id)
+    )
+
+
 async def find_profile(session: AsyncSession, user_ref: int | str) -> User | None:
     """A user whose comments were collected before, by tg_id or by username."""
     stmt = select(User).where(User.profile_collected_at.is_not(None))

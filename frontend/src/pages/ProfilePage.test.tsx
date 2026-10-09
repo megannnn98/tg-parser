@@ -65,6 +65,8 @@ it("shows the profile, its channels and the export link", async () => {
   expect(screen.getByRole("link", { name: "Скачать .txt" }).getAttribute("href")).toBe(
     "/api/v1/users/7/comments.txt"
   );
+  // Search by meaning is offered for a user with comments.
+  expect(screen.getByLabelText("Запрос")).toBeTruthy();
 });
 
 it("does not ask the API about an address that is not a Telegram id", async () => {
@@ -87,6 +89,8 @@ it("shows an empty collection without an error and disables political analysis",
   renderProfile();
 
   expect(await screen.findByText("Комментарии в выбранных каналах не найдены.")).toBeTruthy();
+  // Nothing to search.
+  expect(screen.queryByLabelText("Запрос")).toBeNull();
   expect(screen.getByRole("button", { name: "Определить полит взгляды" }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: "Обновить комментарии" }).hasAttribute("disabled")).toBe(false);
 });

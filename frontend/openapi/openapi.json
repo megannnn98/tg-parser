@@ -353,6 +353,79 @@
         }
       }
     },
+    "/api/v1/users/{tg_id}/search": {
+      "get": {
+        "summary": "Search User Comments",
+        "description": "The user's comments closest in meaning to `q`.\n\n`context=false` ranks every comment by itself, without its chunk: the\nplain message search the default ranking is compared with.",
+        "operationId": "search_user_comments",
+        "parameters": [
+          {
+            "name": "tg_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tg Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Context"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/position-analysis": {
       "post": {
         "summary": "Start Position Analysis",
@@ -1232,6 +1305,98 @@
           "display_name"
         ],
         "title": "ResolvedUser"
+      },
+      "SearchHit": {
+        "properties": {
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "tg_message_id": {
+            "type": "integer",
+            "title": "Tg Message Id"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Date"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "message_score": {
+            "type": "number",
+            "title": "Message Score"
+          },
+          "chunk_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Score"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "tg_message_id",
+          "channel",
+          "date",
+          "text",
+          "message_score",
+          "chunk_score",
+          "score"
+        ],
+        "title": "SearchHit"
+      },
+      "SearchResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "indexed_messages": {
+            "type": "integer",
+            "title": "Indexed Messages"
+          },
+          "total_messages": {
+            "type": "integer",
+            "title": "Total Messages"
+          },
+          "used_context": {
+            "type": "boolean",
+            "title": "Used Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "results",
+          "indexed_messages",
+          "total_messages",
+          "used_context"
+        ],
+        "title": "SearchResponse"
       },
       "SimilarAuthor": {
         "properties": {

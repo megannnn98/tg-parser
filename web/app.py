@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import PlainTextResponse
 
@@ -27,7 +28,9 @@ from parser.utils import parse_user_ref, user_export_filename
 from parser.position_analysis import PositionAnalysis
 from parser.local_text_analysis import LocalTextAnalysis
 from parser.position_comparison import AnalysisProgress, PositionResults
+from embeddings.e5 import PRODUCTION_MODEL, E5Encoder
 from services.profiles import ProfileNotFound, ProfileService
+from services.search import SemanticSearch
 from web.position_jobs import PositionJobs
 from web.frontend import frontend_dist as default_frontend_dist
 from web.frontend import mount_frontend
@@ -42,6 +45,8 @@ from web.schemas import (
     JobStatus,
     PoliticalCoords,
     Profile,
+    SearchHit,
+    SearchResponse,
     UserDetail,
 )
 
@@ -180,6 +185,50 @@ async def get_position_comparisons(request: Request, tg_id: int):
     )
 
 
+@api.get("/users/{tg_id}/search", response_model=SearchResponse)
+async def search_user_comments(
+    request: Request,
+    tg_id: int,
+    q: str = Query(min_length=1, max_length=500),
+    limit: int = Query(20, ge=1, le=100),
+    context: bool = True,
+):
+    """The user's comments closest in meaning to `q`.
+
+    `context=false` ranks every comment by itself, without its chunk: the
+    plain message search the default ranking is compared with.
+    """
+    query = q.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="The query is empty")
+    try:
+        state = request.app.state
+        result = await SemanticSearch(
+            state.database.sessions, state.search_encoder, state.search_lock
+        ).search(tg_id, query, limit=limit, use_context=context)
+    except ProfileNotFound as exc:
+        raise _user_not_found() from exc
+    return SearchResponse(
+        query=query,
+        results=[
+            SearchHit(
+                message_id=hit.message_id,
+                tg_message_id=hit.tg_message_id,
+                channel=hit.channel,
+                date=hit.date,
+                text=hit.text,
+                message_score=hit.message_score,
+                chunk_score=hit.chunk_score,
+                score=hit.score,
+            )
+            for hit in result.hits
+        ],
+        indexed_messages=result.indexed_messages,
+        total_messages=result.total_messages,
+        used_context=result.used_context,
+    )
+
+
 @api.post("/position-analysis", status_code=202, response_model=AnalysisProgress)
 async def start_position_analysis(request: Request):
     try:
@@ -196,6 +245,7 @@ def create_app(
     frontend_dist: Path | None = None,
     position_service: PositionAnalysis | None = None,
     timezone: str = APP_TIMEZONE,
+    search_encoder=None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app):
@@ -224,6 +274,12 @@ def create_app(
             model_cache_dir=Path(os.getenv("DATA_DIR", "data")) / "position-model-cache",
         )
     app.state.position_jobs = PositionJobs(position_service)
+    # The model the embedding tables were filled with; its weights are loaded
+    # by the first search, not at startup.
+    app.state.search_encoder = search_encoder or E5Encoder(
+        PRODUCTION_MODEL, cache_dir=Path(os.getenv("DATA_DIR", "data")) / "e5-cache"
+    )
+    app.state.search_lock = threading.Lock()
 
     app.include_router(api, prefix="/api/v1")
     mount_frontend(app, frontend_dist or default_frontend_dist())

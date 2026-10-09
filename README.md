@@ -561,6 +561,11 @@ python -m scripts.embed --messages
 python -m scripts.embed --chunk-set 1
 ```
 
+Рабочая модель — `intfloat/multilingual-e5-small` (384 измерения), она же используется по
+умолчанию. Поверх этих эмбеддингов работает поиск по смыслу на странице пользователя и
+`GET /api/v1/users/<tg_id>/search?q=...`; как он ранжирует, описано в
+[docs/semantic-search.md](docs/semantic-search.md).
+
 Повторный запуск считает только недостающее. `--force` пересобирает всё. Стратегии:
 `message`, `fixed_messages`, `token_budget`, `time_window`, `hybrid`, `hybrid_short`;
 их параметры описаны в `chunking/strategies.py`. Нужны PyTorch и Transformers.

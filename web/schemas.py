@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from parser.user_profile import (
@@ -149,3 +151,25 @@ class PoliticalCoords(BaseModel):
     signal_count: int
     bars: str
     axes: dict[str, AxisCounts]
+
+
+class SearchHit(BaseModel):
+    message_id: int
+    tg_message_id: int
+    channel: str
+    date: datetime
+    text: str
+    # Cosine similarity of the message itself to the query.
+    message_score: float
+    # Of the best chunk holding the message; null when ranked without context.
+    chunk_score: float | None
+    score: float
+
+
+class SearchResponse(BaseModel):
+    query: str
+    results: list[SearchHit]
+    # Fewer indexed than total: embeddings have not been built for all comments.
+    indexed_messages: int
+    total_messages: int
+    used_context: bool
