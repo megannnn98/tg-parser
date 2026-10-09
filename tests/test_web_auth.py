@@ -145,6 +145,19 @@ def test_token_expiry_cannot_be_extended():
     assert not token_is_valid(PASSWORD, later, now=1000)
 
 
+@pytest.mark.parametrize(
+    "token",
+    [
+        "9" * 5000 + ".abcdef",  # More digits than int() accepts.
+        f"{2**30}.подпись",  # compare_digest refuses non-ASCII text.
+        "٣.abcdef",  # A digit, but not an ASCII one.
+    ],
+    ids=["too-long", "non-ascii-signature", "non-ascii-digit"],
+)
+def test_malformed_token_is_refused_not_an_error(token: str):
+    assert not token_is_valid(PASSWORD, token, now=1000)
+
+
 def test_token_of_another_password_is_refused():
     assert not token_is_valid(PASSWORD, issue_token(PASSWORD + "x", now=1000), now=1000)
 

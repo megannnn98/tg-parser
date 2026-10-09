@@ -22,6 +22,8 @@ SESSION_SECONDS = 30 * 24 * 60 * 60
 # Wrong passwords one address may send within the window before it is refused.
 LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 5 * 60
+# Seconds since 1970 take ten digits; int() refuses thousands of them.
+_MAX_EXPIRES_DIGITS = 12
 
 
 def _signature(password: str, expires: int) -> str:
@@ -35,11 +37,16 @@ def issue_token(password: str, now: float | None = None) -> str:
 
 
 def token_is_valid(password: str, token: str, now: float | None = None) -> bool:
+    # The cookie is whatever the visitor sent: nothing below may raise on it.
     expires_text, _, signature = token.partition(".")
     if not expires_text.isascii() or not expires_text.isdigit():
         return False
+    if len(expires_text) > _MAX_EXPIRES_DIGITS:
+        return False
     expires = int(expires_text)
-    if not hmac.compare_digest(signature, _signature(password, expires)):
+    if not hmac.compare_digest(
+        signature.encode(), _signature(password, expires).encode()
+    ):
         return False
     return (time.time() if now is None else now) < expires
 
@@ -101,8 +108,10 @@ auth_api = APIRouter(
 )
 
 
+# `async`, with nothing awaited: the handler runs on the event loop, so two
+# logins never touch the throttle at once and no lock is needed.
 @auth_api.post("/login", status_code=204)
-def login(request: Request, payload: LoginRequest) -> Response:
+async def login(request: Request, payload: LoginRequest) -> Response:
     state = request.app.state
     address = request.client.host if request.client else "unknown"
     throttle: LoginThrottle = state.login_throttle
