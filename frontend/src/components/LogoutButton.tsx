@@ -1,10 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { LogOutIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { logout } from "@/api/generated";
-import { Button } from "@/components/ui/button";
 
-export function LogoutButton() {
+export function LogoutButton({ className }: { className?: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -16,8 +16,9 @@ export function LogoutButton() {
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={onClick}>
+    <button type="button" className={className} onClick={onClick}>
+      <LogOutIcon className="size-4" />
       Выйти
-    </Button>
+    </button>
   );
 }

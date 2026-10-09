@@ -1,14 +1,13 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { collectStatus, getChannels, listProfiles, saveChannelsList, startCollect } from "@/api/generated";
+import { collectStatus, getChannels, listProfiles, startCollect } from "@/api/generated";
 import { UsersPage } from "@/pages/UsersPage";
 import { failed, ok, renderPage } from "@/test/render";
 
 vi.mock("@/api/generated", () => ({
   listProfiles: vi.fn(),
   getChannels: vi.fn(),
-  saveChannelsList: vi.fn(),
   startCollect: vi.fn(),
   collectStatus: vi.fn(),
   cancelCollect: vi.fn()
@@ -41,7 +40,6 @@ function doneJob(tg_id: number) {
 beforeEach(() => {
   vi.mocked(listProfiles).mockReset().mockReturnValue(ok([profile]) as never);
   vi.mocked(getChannels).mockReset().mockReturnValue(ok({ channels: ["chan_a", "chan_b"] }) as never);
-  vi.mocked(saveChannelsList).mockReset();
   vi.mocked(startCollect).mockReset();
   vi.mocked(collectStatus).mockReset();
 });
@@ -109,28 +107,44 @@ it("shows the job's error and the failed channels", async () => {
   expect(screen.getByText("chan_a — private")).toBeTruthy();
 });
 
-it("saves the channel list", async () => {
-  vi.mocked(saveChannelsList).mockReturnValue(ok({ channels: ["chan_a", "chan_b", "chan_c"] }) as never);
+it("sums up what is collected", async () => {
+  vi.mocked(listProfiles).mockReturnValue(
+    ok([profile, { ...profile, tg_id: 8, display_username: "@petya", total_messages: 1200 }]) as never
+  );
 
   renderUsers();
-  const textarea = await screen.findByLabelText("Список каналов");
-  fireEvent.change(textarea, { target: { value: "chan_a\nchan_b\n@chan_c" } });
-  fireEvent.click(screen.getByRole("button", { name: "Сохранить список каналов" }));
 
-  expect(await screen.findByText("Сохранено: 3 канал(ов)")).toBeTruthy();
-  expect(saveChannelsList).toHaveBeenCalledWith({ body: { channels_text: "chan_a\nchan_b\n@chan_c" } });
+  const totals = (await screen.findByText("профилей")).closest("dl")!;
+  const pairs = Array.from(totals.querySelectorAll("div")).map((tile) => tile.textContent);
+  expect(pairs).toEqual(["2профилей", "1\u00a0203комментариев", "2каналов в списке"]);
 });
 
-it("asks before saving an empty channel list", async () => {
-  vi.mocked(saveChannelsList).mockReturnValue(ok({ channels: [] }) as never);
+it("draws where a user wrote, a stripe per channel", async () => {
+  vi.mocked(listProfiles).mockReturnValue(
+    ok([
+      {
+        ...profile,
+        channels: [
+          { name: "chan_a", message_count: 2, percent: 66.7, color: "#111111", dasharray: "", dashoffset: 0 },
+          { name: "chan_b", message_count: 1, percent: 33.3, color: "#222222", dasharray: "", dashoffset: 0 }
+        ]
+      }
+    ]) as never
+  );
 
   renderUsers();
-  fireEvent.change(await screen.findByLabelText("Список каналов"), { target: { value: "" } });
-  fireEvent.click(screen.getByRole("button", { name: "Сохранить список каналов" }));
 
-  expect(await screen.findByText("Список каналов станет пустым. Сохранить?")).toBeTruthy();
-  expect(saveChannelsList).not.toHaveBeenCalled();
+  const link = await screen.findByRole("link", { name: /@vasya/ });
+  const stripes = Array.from(link.querySelectorAll<HTMLElement>("span[title]"));
+  expect(stripes.map((stripe) => [stripe.title, stripe.style.width])).toEqual([
+    ["chan_a: 66.7%", "66.7%"],
+    ["chan_b: 33.3%", "33.3%"]
+  ]);
+});
 
-  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
-  await waitFor(() => expect(saveChannelsList).toHaveBeenCalled());
+it("does not offer the channel list on the page itself", async () => {
+  renderUsers();
+
+  await screen.findByRole("link", { name: /@vasya/ });
+  expect(screen.queryByLabelText("Список каналов")).toBeNull();
 });
