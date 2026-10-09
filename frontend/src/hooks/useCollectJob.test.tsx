@@ -31,7 +31,7 @@ it("stops polling after the failures in a row run out", async () => {
     resolved: null,
     channels: [],
     saved_total: 0,
-    db_name: null,
+    tg_id: null,
     error: null
   };
   vi.mocked(collectStatus)

@@ -1,7 +1,9 @@
 import asyncio
 import os
 from collections.abc import Awaitable, Callable
-from pathlib import Path
+from contextlib import asynccontextmanager
+
+from db.engine import create_engine, session_factory
 
 from parser.collector import collect_db, CollectorConfig
 from parser.user_collector import collect_user_comments, UserCollectorConfig
@@ -16,27 +18,32 @@ from parser.logger import get_logger
 from config import (
     CHANNELS,
     CHANNELS_PATH,
-    DATA_DIR,
-    DB_PATH,
     DISCOVER_TARGET,
-    USER_DB_PATH,
 )
 
 
-async def run_collect(_args, _logger) -> None:
-    await collect_db(Path(DB_PATH), CollectorConfig(channels=CHANNELS))
+@asynccontextmanager
+async def database(pool_size: int = 5):
+    engine = create_engine(pool_size=pool_size)
+    try:
+        yield session_factory(engine)
+    finally:
+        await engine.dispose()
 
 
-async def run_user_comments(args, logger) -> None:
+async def run_collect(_args, logger) -> None:
+    cfg = CollectorConfig(channels=CHANNELS)
+    async with database(pool_size=cfg.concurrency) as sessions:
+        new_rows = await collect_db(sessions, cfg)
+    logger.info(f"Saved {new_rows} new comments")
+
+
+async def run_user_comments(args, _logger) -> None:
     user_ref = parse_user_ref(args.user)
-    cfg = UserCollectorConfig(channels=CHANNELS)
-    user_db_path, saved = await collect_user_comments(
-        Path(DATA_DIR),
-        cfg,
-        user_ref,
-        db_path_override=Path(USER_DB_PATH) if USER_DB_PATH else None,
-    )
-    logger.info(f"Saved {saved} new comments of {user_ref} to {user_db_path}")
+    cfg = UserCollectorConfig(channels=CHANNELS, refresh_text=args.refresh_text)
+    async with database() as sessions:
+        result = await collect_user_comments(sessions, cfg, user_ref)
+    print(result.render())
 
 
 async def run_find_user(args, logger) -> None:
@@ -69,7 +76,7 @@ async def run_web(_args, _logger) -> None:
 
     await asyncio.to_thread(
         uvicorn.run,
-        create_app(Path(DATA_DIR)),
+        create_app(),
         host=os.getenv("WEB_HOST", "0.0.0.0"),
         port=int(os.getenv("WEB_PORT", "8000")),
     )

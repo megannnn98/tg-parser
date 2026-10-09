@@ -1,0 +1,18 @@
+# The project is mounted at run time; the image only needs requirements.txt
+# installed. Keep secrets, data and local environments out of it.
+.git
+.env
+.env.*
+*.session
+*.session-journal
+*.session.invalid
+data
+.venv
+.venv-gpu
+frontend/node_modules
+frontend/dist
+android
+**/__pycache__
+.mypy_cache
+.pytest_cache
+.ruff_cache

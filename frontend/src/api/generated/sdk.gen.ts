@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyzePoliticalData, AnalyzePoliticalErrors, AnalyzePoliticalResponses, CancelCollectData, CancelCollectErrors, CancelCollectResponses, CollectStatusData, CollectStatusErrors, CollectStatusResponses, ExportUserCommentsData, ExportUserCommentsErrors, ExportUserCommentsResponses, GetChannelsData, GetChannelsResponses, GetUserData, GetUserErrors, GetUserResponses, ListProfilesData, ListProfilesResponses, SaveChannelsListData, SaveChannelsListErrors, SaveChannelsListResponses, StartCollectData, StartCollectErrors, StartCollectResponses } from './types.gen';
+import type { AnalyzePoliticalData, AnalyzePoliticalErrors, AnalyzePoliticalResponses, CancelCollectData, CancelCollectErrors, CancelCollectResponses, CollectStatusData, CollectStatusErrors, CollectStatusResponses, ExportUserCommentsData, ExportUserCommentsErrors, ExportUserCommentsResponses, GetChannelsData, GetChannelsResponses, GetPositionComparisonsData, GetPositionComparisonsErrors, GetPositionComparisonsResponses, GetUserData, GetUserErrors, GetUserResponses, ListProfilesData, ListProfilesResponses, SaveChannelsListData, SaveChannelsListErrors, SaveChannelsListResponses, SearchUserCommentsData, SearchUserCommentsErrors, SearchUserCommentsResponses, StartCollectData, StartCollectErrors, StartCollectResponses, StartPositionAnalysisData, StartPositionAnalysisResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -65,14 +65,34 @@ export const cancelCollect = <ThrowOnError extends boolean = false>(options: Opt
 /**
  * Get User
  */
-export const getUser = <ThrowOnError extends boolean = false>(options: Options<GetUserData, ThrowOnError>) => (options.client ?? client).get<GetUserResponses, GetUserErrors, ThrowOnError>({ url: '/api/v1/users/{db_name}', ...options });
+export const getUser = <ThrowOnError extends boolean = false>(options: Options<GetUserData, ThrowOnError>) => (options.client ?? client).get<GetUserResponses, GetUserErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}', ...options });
 
 /**
  * Export User Comments
  */
-export const exportUserComments = <ThrowOnError extends boolean = false>(options: Options<ExportUserCommentsData, ThrowOnError>) => (options.client ?? client).get<ExportUserCommentsResponses, ExportUserCommentsErrors, ThrowOnError>({ url: '/api/v1/users/{db_name}/comments.txt', ...options });
+export const exportUserComments = <ThrowOnError extends boolean = false>(options: Options<ExportUserCommentsData, ThrowOnError>) => (options.client ?? client).get<ExportUserCommentsResponses, ExportUserCommentsErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/comments.txt', ...options });
 
 /**
  * Analyze Political
  */
-export const analyzePolitical = <ThrowOnError extends boolean = false>(options: Options<AnalyzePoliticalData, ThrowOnError>) => (options.client ?? client).post<AnalyzePoliticalResponses, AnalyzePoliticalErrors, ThrowOnError>({ url: '/api/v1/users/{db_name}/political-coords', ...options });
+export const analyzePolitical = <ThrowOnError extends boolean = false>(options: Options<AnalyzePoliticalData, ThrowOnError>) => (options.client ?? client).post<AnalyzePoliticalResponses, AnalyzePoliticalErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/political-coords', ...options });
+
+/**
+ * Get Position Comparisons
+ */
+export const getPositionComparisons = <ThrowOnError extends boolean = false>(options: Options<GetPositionComparisonsData, ThrowOnError>) => (options.client ?? client).get<GetPositionComparisonsResponses, GetPositionComparisonsErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/position-comparisons', ...options });
+
+/**
+ * Search User Comments
+ *
+ * The user's comments closest in meaning to `q`.
+ *
+ * `context=false` ranks every comment by itself, without its chunk: the
+ * plain message search the default ranking is compared with.
+ */
+export const searchUserComments = <ThrowOnError extends boolean = false>(options: Options<SearchUserCommentsData, ThrowOnError>) => (options.client ?? client).get<SearchUserCommentsResponses, SearchUserCommentsErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/search', ...options });
+
+/**
+ * Start Position Analysis
+ */
+export const startPositionAnalysis = <ThrowOnError extends boolean = false>(options?: Options<StartPositionAnalysisData, ThrowOnError>) => (options?.client ?? client).post<StartPositionAnalysisResponses, unknown, ThrowOnError>({ url: '/api/v1/position-analysis', ...options });

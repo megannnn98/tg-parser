@@ -10,7 +10,7 @@ export function App() {
     <main className="mx-auto max-w-6xl px-4 py-6">
       <Routes>
         <Route index element={<UsersPage />} />
-        <Route path="users/:dbName" element={<ProfilePage />} />
+        <Route path="users/:tgId" element={<ProfilePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </main>

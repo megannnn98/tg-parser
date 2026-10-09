@@ -1,12 +1,20 @@
 import asyncio
 import importlib
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import fake_pyrogram
 import pytest
 from fake_pyrogram import FakeAuthKeyDuplicated, FakeUnauthorized
+
+# Pyrogram hands over a naive datetime in the process's local time; the
+# collected message must carry the same instant as an aware UTC datetime,
+# whatever TZ the process runs in.
+_SENT_AT = 1739613600
+_SENT_LOCAL = datetime.fromtimestamp(_SENT_AT)
+_SENT_UTC = datetime.fromtimestamp(_SENT_AT, timezone.utc)
 
 
 def _load_telegram_module(monkeypatch):
@@ -100,19 +108,19 @@ def test_fetch_messages_filters_invalid_and_maps_fields(monkeypatch):
         text="Hello",
         from_user=SimpleNamespace(id=10, username="alice"),
         id=777,
-        date="2025-02-15 10:00:00",
+        date=_SENT_LOCAL,
     )
     no_text_msg = SimpleNamespace(
         text=None,
         from_user=SimpleNamespace(id=11, username="bob"),
         id=778,
-        date="2025-02-15 10:01:00",
+        date=_SENT_LOCAL,
     )
     no_user_msg = SimpleNamespace(
         text="World",
         from_user=None,
         id=779,
-        date="2025-02-15 10:02:00",
+        date=_SENT_LOCAL,
     )
 
     class FakeTGClient:
@@ -138,7 +146,7 @@ def test_fetch_messages_filters_invalid_and_maps_fields(monkeypatch):
             tg_id=10,
             username="alice",
             message_id=777,
-            date="2025-02-15 10:00:00",
+            date=_SENT_UTC,
             text="Hello",
         )
     ]
@@ -210,25 +218,25 @@ def test_fetch_user_messages_filters_and_maps_fields(monkeypatch):
     valid_msg = SimpleNamespace(
         text="Hello",
         id=777,
-        date="2025-02-15 10:00:00",
+        date=_SENT_LOCAL,
         from_user=SimpleNamespace(id=555),
     )
     no_text_msg = SimpleNamespace(
         text=None,
         id=778,
-        date="2025-02-15 10:01:00",
+        date=_SENT_LOCAL,
         from_user=SimpleNamespace(id=555),
     )
     other_user_msg = SimpleNamespace(
         text="Not mine",
         id=779,
-        date="2025-02-15 10:02:00",
+        date=_SENT_LOCAL,
         from_user=SimpleNamespace(id=999),
     )
     anonymous_msg = SimpleNamespace(
         text="Anonymous",
         id=780,
-        date="2025-02-15 10:03:00",
+        date=_SENT_LOCAL,
         from_user=None,
     )
 
@@ -253,7 +261,7 @@ def test_fetch_user_messages_filters_and_maps_fields(monkeypatch):
     assert result == [
         telegram.UserComment(
             message_id=777,
-            date="2025-02-15 10:00:00",
+            date=_SENT_UTC,
             text="Hello",
         )
     ]

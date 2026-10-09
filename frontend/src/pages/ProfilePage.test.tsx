@@ -5,6 +5,10 @@ import { analyzePolitical, cancelCollect, collectStatus, getUser, startCollect }
 import { ProfilePage } from "@/pages/ProfilePage";
 import { failed, ok, renderPage } from "@/test/render";
 
+vi.mock("@/components/PositionComparisons", () => ({
+  PositionComparisons: () => <div>Близкие политические позиции</div>
+}));
+
 vi.mock("@/api/generated", () => ({
   getUser: vi.fn(),
   analyzePolitical: vi.fn(),
@@ -16,7 +20,6 @@ vi.mock("@/api/generated", () => ({
 function detail(username: string | null) {
   return {
     profile: {
-      db_name: "vasya_7.db",
       tg_id: 7,
       username,
       display_name: null,
@@ -49,19 +52,28 @@ beforeEach(() => {
 });
 
 function renderProfile() {
-  return renderPage(<ProfilePage />, { path: "/users/:dbName", url: "/users/vasya_7.db" });
+  return renderPage(<ProfilePage />, { path: "/users/:tgId", url: "/users/7" });
 }
 
 it("shows the profile, its channels and the export link", async () => {
   renderProfile();
 
   expect(await screen.findByRole("heading", { name: "@vasya" })).toBeTruthy();
-  expect(getUser).toHaveBeenCalledWith({ path: { db_name: "vasya_7.db" } });
+  expect(getUser).toHaveBeenCalledWith({ path: { tg_id: 7 } });
   expect(screen.getByText("chan_a")).toBeTruthy();
   expect(screen.getByText("66.7%")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Скачать .txt" }).getAttribute("href")).toBe(
-    "/api/v1/users/vasya_7.db/comments.txt"
+    "/api/v1/users/7/comments.txt"
   );
+  // Search by meaning is offered for a user with comments.
+  expect(screen.getByLabelText("Запрос")).toBeTruthy();
+});
+
+it("does not ask the API about an address that is not a Telegram id", async () => {
+  renderPage(<ProfilePage />, { path: "/users/:tgId", url: "/users/vasya_7.db" });
+
+  expect(await screen.findByText(/Страница не найдена/)).toBeTruthy();
+  expect(getUser).not.toHaveBeenCalled();
 });
 
 it("shows an empty collection without an error and disables political analysis", async () => {
@@ -77,6 +89,8 @@ it("shows an empty collection without an error and disables political analysis",
   renderProfile();
 
   expect(await screen.findByText("Комментарии в выбранных каналах не найдены.")).toBeTruthy();
+  // Nothing to search.
+  expect(screen.queryByLabelText("Запрос")).toBeNull();
   expect(screen.getByRole("button", { name: "Определить полит взгляды" }).hasAttribute("disabled")).toBe(true);
   expect(screen.getByRole("button", { name: "Обновить комментарии" }).hasAttribute("disabled")).toBe(false);
 });
@@ -129,7 +143,7 @@ it("refreshes the comments by username, or by id without one", async () => {
       resolved: null,
       channels: [{ channel: "chan_a", status: "started", saved: 0, error: null }],
       saved_total: 0,
-      db_name: null,
+      tg_id: null,
       error: null
     }) as never
   );
@@ -161,16 +175,16 @@ it("shows the political coordinates on demand", async () => {
   const meter = await screen.findByRole("meter", { name: "Левая — Правая" });
   expect(meter.getAttribute("aria-valuenow")).toBe("75");
   expect(screen.getByText(/Итого: 10 из 40 сообщений \(25%\)/)).toBeTruthy();
-  expect(analyzePolitical).toHaveBeenCalledWith({ path: { db_name: "vasya_7.db" } });
+  expect(analyzePolitical).toHaveBeenCalledWith({ path: { tg_id: 7 } });
 });
 
 it("shows why the political analysis failed", async () => {
-  vi.mocked(analyzePolitical).mockReturnValue(failed(400, "DEEPSEEK_API_KEY is not set") as never);
+  vi.mocked(analyzePolitical).mockReturnValue(failed(400, "OPENROUTER_API_KEY is not set") as never);
 
   renderProfile();
   fireEvent.click(await screen.findByRole("button", { name: "Определить полит взгляды" }));
 
-  expect(await screen.findByText("DEEPSEEK_API_KEY is not set")).toBeTruthy();
+  expect(await screen.findByText("OPENROUTER_API_KEY is not set")).toBeTruthy();
   expect(within(document.body).getByRole("button", { name: "Определить полит взгляды" })).toBeTruthy();
 });
 
@@ -188,7 +202,7 @@ it("drops the political result once a refresh brings new comments", async () => 
       resolved: null,
       channels: [],
       saved_total: 60,
-      db_name: "vasya_7.db",
+      tg_id: 7,
       error: null
     }) as never
   );

@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18-bookworm
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-telegram}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-telegram}
+      POSTGRES_DB: ${POSTGRES_DB:-telegram_comments}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5435}:5432"
+    volumes:
+      # PostgreSQL 18 images keep the cluster in a version subdirectory.
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  # Throwaway database for integration tests: `docker compose --profile test up -d postgres-test`.
+  postgres-test:
+    profiles: ["test"]
+    image: pgvector/pgvector:0.8.6-pg18-bookworm
+    environment:
+      POSTGRES_USER: telegram
+      POSTGRES_PASSWORD: telegram
+      POSTGRES_DB: telegram_comments_test
+    ports:
+      - "127.0.0.1:${POSTGRES_TEST_PORT:-5436}:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telegram -d telegram_comments_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # CLI modes: `docker compose run --rm app user-comments @username`.
+  app:
+    build:
+      context: .
+      dockerfile: ci/Dockerfile
+    image: telegram-parser
+    profiles: ["cli"]
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file: .env.docker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD:-telegram}@postgres:5432/${POSTGRES_DB:-telegram_comments}
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: ci/Dockerfile
+    image: telegram-parser
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file: .env.docker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD:-telegram}@postgres:5432/${POSTGRES_DB:-telegram_comments}
+    entrypoint: ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

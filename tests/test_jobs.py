@@ -4,7 +4,22 @@ from pathlib import Path
 import pytest
 
 from web.jobs import CollectJob, JobAlreadyRunningError, JobRegistry
-from parser.user_collector import ChannelProgress, UserCollectorDeps
+from parser.user_collector import (
+    ChannelProgress,
+    UserCollectorDeps,
+    UserCollectResult,
+)
+
+
+def _result(new: int) -> UserCollectResult:
+    return UserCollectResult(
+        tg_id=555,
+        username="vasya",
+        channels_scanned=1,
+        channels_failed=0,
+        fetched=new,
+        new=new,
+    )
 
 
 def _task_factory(tasks: list):
@@ -24,7 +39,7 @@ def test_start_runs_job_to_completion_and_reports_result(tmp_path: Path):
         deps.on_channel_progress(
             ChannelProgress(channel="chan_a", status="done", saved=2)
         )
-        return tmp_path / "vasya_555.db", 2
+        return _result(2)
 
     registry = JobRegistry(collect_fn=fake_collect, task_factory=_task_factory(tasks))
 
@@ -37,7 +52,7 @@ def test_start_runs_job_to_completion_and_reports_result(tmp_path: Path):
 
     assert job.state == "done"
     assert job.saved_total == 2
-    assert job.db_name == "vasya_555.db"
+    assert job.tg_id == 555
     assert registry.get(job.job_id) is job
     assert job.snapshot()["channels"] == [
         {"channel": "chan_a", "status": "done", "saved": 2, "error": None}
@@ -48,7 +63,7 @@ def test_start_records_total_channels_for_progress_reporting(tmp_path: Path):
     tasks: list = []
 
     async def fake_collect(data_dir, cfg, user_ref, deps):
-        return tmp_path / "vasya_555.db", 0
+        return _result(0)
 
     registry = JobRegistry(collect_fn=fake_collect, task_factory=_task_factory(tasks))
 
@@ -72,7 +87,7 @@ def test_start_reports_user_resolved(tmp_path: Path):
         deps.on_user_resolved(
             TelegramUser(tg_id=555, username="vasya", first_name="V", last_name=None)
         )
-        return tmp_path / "vasya_555.db", 0
+        return _result(0)
 
     registry = JobRegistry(collect_fn=fake_collect, task_factory=_task_factory(tasks))
 
@@ -111,7 +126,7 @@ def test_start_rejects_second_job_while_one_is_running(tmp_path: Path):
 
     async def blocking_collect(data_dir, cfg, user_ref, deps):
         await release.wait()
-        return tmp_path / "a.db", 0
+        return _result(0)
 
     registry = JobRegistry(
         collect_fn=blocking_collect, task_factory=_task_factory(tasks)
@@ -178,7 +193,7 @@ def test_start_marks_job_as_error_on_cancellation(tmp_path: Path):
     async def blocking_collect(data_dir, cfg, user_ref, deps):
         started.set()
         await asyncio.sleep(10)
-        return tmp_path / "a.db", 0
+        return _result(0)
 
     registry = JobRegistry(
         collect_fn=blocking_collect, task_factory=_task_factory(tasks)
@@ -205,7 +220,7 @@ def test_cancel_stops_running_job_and_marks_it_as_error(tmp_path: Path):
     async def blocking_collect(data_dir, cfg, user_ref, deps):
         started.set()
         await asyncio.sleep(10)
-        return tmp_path / "a.db", 0
+        return _result(0)
 
     registry = JobRegistry(
         collect_fn=blocking_collect, task_factory=_task_factory(tasks)
@@ -238,7 +253,7 @@ def test_cancel_returns_false_for_already_finished_job(tmp_path: Path):
     tasks: list = []
 
     async def fake_collect(data_dir, cfg, user_ref, deps):
-        return tmp_path / "vasya_555.db", 0
+        return _result(0)
 
     registry = JobRegistry(collect_fn=fake_collect, task_factory=_task_factory(tasks))
 
@@ -264,7 +279,7 @@ def test_start_reports_mixed_channel_outcomes(tmp_path: Path):
         deps.on_channel_progress(
             ChannelProgress(channel="chan_b", status="failed", error="boom")
         )
-        return tmp_path / "vasya_555.db", 5
+        return _result(5)
 
     registry = JobRegistry(collect_fn=fake_collect, task_factory=_task_factory(tasks))
 

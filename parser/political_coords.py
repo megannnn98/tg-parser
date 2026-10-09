@@ -5,13 +5,12 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import httpx
 
 from parser.logger import get_logger
-from parser.user_profile import UserComment, fetch_user_comments
+from parser.llm_config import CHAT_COMPLETIONS_URL, openrouter_model, openrouter_options
 
 _logger = get_logger("political_coords")
 
@@ -111,16 +110,14 @@ SYSTEM_PROMPT = """Ты — анализатор политических коо
 
 
 async def analyze_political_coords(
-    db_path: Path,
-    tg_id: int,
+    comments: list[str],
     api_key: str | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> AggregatedCoords:
-    api_key = api_key or os.getenv("DEEPSEEK_API_KEY", "")
+    api_key = api_key or os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
-        raise PoliticalCoordsError("DEEPSEEK_API_KEY is not set")
+        raise PoliticalCoordsError("OPENROUTER_API_KEY is not set")
 
-    comments = fetch_user_comments(db_path, tg_id)
     messages = _filter_messages(comments)
     total_comments = len(comments)
 
@@ -157,8 +154,8 @@ class PoliticalCoordsError(RuntimeError):
     pass
 
 
-def _filter_messages(comments: list[UserComment], min_length: int = _MIN_MESSAGE_LENGTH) -> list[str]:
-    return [c.text for c in comments if len(c.text) >= min_length]
+def _filter_messages(comments: list[str], min_length: int = _MIN_MESSAGE_LENGTH) -> list[str]:
+    return [text for text in comments if len(text) >= min_length]
 
 
 def _split_batches(messages: list[str], batch_size: int) -> list[list[str]]:
@@ -181,7 +178,8 @@ async def _call_deepseek(
     user_content += f"\n\nПроанализируй все {len(messages)} высказываний выше. Верни {len(messages)} JSON Lines (по одному на строку)."
 
     payload = {
-        "model": "deepseek-chat",
+        "model": openrouter_model(),
+        **openrouter_options(),
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
@@ -195,7 +193,7 @@ async def _call_deepseek(
     )
 
     resp = await client.post(
-        "https://api.deepseek.com/v1/chat/completions",
+        CHAT_COMPLETIONS_URL,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -205,7 +203,7 @@ async def _call_deepseek(
 
     if resp.status_code != 200:
         raise PoliticalCoordsError(
-            f"DeepSeek API error {resp.status_code}: {resp.text[:500]}"
+            f"OpenRouter API error {resp.status_code}"
         )
 
     data = resp.json()

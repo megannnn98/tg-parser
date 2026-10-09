@@ -1,5 +1,4 @@
 import json
-import sqlite3
 from pathlib import Path
 
 import httpx
@@ -15,7 +14,6 @@ from parser.political_coords import (
     _split_batches,
     analyze_political_coords,
 )
-from parser.user_profile import UserComment
 
 
 class FakeResponse:
@@ -76,26 +74,8 @@ def _ndjson_response(*analyses: dict) -> dict:
     }
 
 
-def _create_user_db(db_path: Path, rows: list[tuple[int, str, int, str, str]]):
-    with sqlite3.connect(db_path) as db:
-        db.execute(
-            """
-            CREATE TABLE user_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tg_id INTEGER NOT NULL,
-                username TEXT,
-                channel TEXT NOT NULL,
-                message_id INTEGER NOT NULL,
-                text TEXT NOT NULL,
-                date TEXT NOT NULL,
-                UNIQUE(channel, message_id)
-            )
-            """
-        )
-        db.executemany(
-            "INSERT INTO user_messages (tg_id, username, channel, message_id, text, date) VALUES (?, ?, ?, ?, ?, ?)",
-            rows,
-        )
+def _texts(rows: list[tuple[int, str, str, int, str, str]]) -> list[str]:
+    return [text for _tg_id, _username, _channel, _message_id, text, _date in rows]
 
 
 def _axis_dict(
@@ -119,17 +99,17 @@ def _insufficient_axes() -> dict:
 class TestFilterMessages:
     def test_skips_short_messages(self):
         comments = [
-            UserComment(channel="a", date="2026-01-01", text="ok"),
-            UserComment(channel="b", date="2026-01-02", text="x" * 40),
-            UserComment(channel="c", date="2026-01-03", text="short"),
+            "ok",
+            "x" * 40,
+            "short",
         ]
         result = _filter_messages(comments, min_length=40)
         assert result == ["x" * 40]
 
     def test_returns_all_when_all_long_enough(self):
         comments = [
-            UserComment(channel="a", date="2026-01-01", text="x" * 50),
-            UserComment(channel="b", date="2026-01-02", text="y" * 50),
+            "x" * 50,
+            "y" * 50,
         ]
         result = _filter_messages(comments, min_length=40)
         assert len(result) == 2
@@ -264,10 +244,7 @@ class TestRenderBars:
 class TestAnalyzePoliticalCoords:
     @pytest.mark.asyncio
     async def test_returns_aggregated_result(self, tmp_path: Path):
-        db_path = tmp_path / "user_7.db"
-        _create_user_db(
-            db_path,
-            [
+        comments = _texts([
                 (7, "user1", "chan_a", 1, "A" * 50, "2026-01-01"),
                 (7, "user1", "chan_a", 2, "B" * 50, "2026-01-02"),
             ],
@@ -284,7 +261,7 @@ class TestAnalyzePoliticalCoords:
         client = FakeClient(response_data=_ndjson_response(axes, axes))
 
         result = await analyze_political_coords(
-            db_path, tg_id=7, api_key="test-key", http_client=client
+            comments, api_key="test-key", http_client=client
         )
 
         assert result.total_messages == 2
@@ -292,10 +269,7 @@ class TestAnalyzePoliticalCoords:
 
     @pytest.mark.asyncio
     async def test_short_messages_are_filtered_out(self, tmp_path: Path):
-        db_path = tmp_path / "user_7.db"
-        _create_user_db(
-            db_path,
-            [
+        comments = _texts([
                 (7, "user1", "chan_a", 1, "hi", "2026-01-01"),
                 (7, "user1", "chan_a", 2, "A" * 50, "2026-01-02"),
             ],
@@ -312,30 +286,28 @@ class TestAnalyzePoliticalCoords:
         client = FakeClient(response_data=_ndjson_response(axes))
 
         result = await analyze_political_coords(
-            db_path, tg_id=7, api_key="test-key", http_client=client
+            comments, api_key="test-key", http_client=client
         )
 
         assert result.total_messages == 2
 
     @pytest.mark.asyncio
     async def test_raises_on_api_error(self, tmp_path: Path):
-        db_path = tmp_path / "user_7.db"
-        _create_user_db(db_path, [(7, "user1", "chan_a", 1, "A" * 50, "2026-01-01")])
+        comments = _texts([(7, "user1", "chan_a", 1, "A" * 50, "2026-01-01")])
 
         client = FakeClient(status_code=401, response_data={"error": "unauthorized"})
 
         with pytest.raises(PoliticalCoordsError, match="401"):
             await analyze_political_coords(
-                db_path, tg_id=7, api_key="test-key", http_client=client
+                comments, api_key="test-key", http_client=client
             )
 
     @pytest.mark.asyncio
     async def test_no_filtered_messages_returns_empty(self, tmp_path: Path):
-        db_path = tmp_path / "user_7.db"
-        _create_user_db(db_path, [(7, "user1", "chan_a", 1, "hi", "2026-01-01")])
+        comments = _texts([(7, "user1", "chan_a", 1, "hi", "2026-01-01")])
 
         result = await analyze_political_coords(
-            db_path, tg_id=7, api_key="test-key",
+            comments, api_key="test-key",
             http_client=FakeClient(response_data=_ndjson_response()),
         )
 
@@ -345,13 +317,12 @@ class TestAnalyzePoliticalCoords:
     @pytest.mark.asyncio
     async def test_no_api_key_raises(self, tmp_path: Path):
         import os
-        old_key = os.environ.pop("DEEPSEEK_API_KEY", None)
+        old_key = os.environ.pop("OPENROUTER_API_KEY", None)
         try:
-            db_path = tmp_path / "user_7.db"
-            _create_user_db(db_path, [(7, "user1", "chan_a", 1, "A" * 50, "2026-01-01")])
+            comments = _texts([(7, "user1", "chan_a", 1, "A" * 50, "2026-01-01")])
 
-            with pytest.raises(PoliticalCoordsError, match="DEEPSEEK_API_KEY"):
-                await analyze_political_coords(db_path, tg_id=7, api_key="")
+            with pytest.raises(PoliticalCoordsError, match="OPENROUTER_API_KEY"):
+                await analyze_political_coords(comments, api_key="")
         finally:
             if old_key is not None:
-                os.environ["DEEPSEEK_API_KEY"] = old_key
+                os.environ["OPENROUTER_API_KEY"] = old_key

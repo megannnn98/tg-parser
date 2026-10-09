@@ -1,16 +1,11 @@
 import argparse
 import re
-import unicodedata
 
-# Usernames and display names come from Telegram and end up in a file path:
+# Usernames and display names come from Telegram and end up in a file name:
 # keep letters of any alphabet, digits and underscores, drop everything else.
 _WHITESPACE = re.compile(r"\s+")
 _UNSAFE_FILENAME_CHARS = re.compile(r"[^\w]+")
 _REPEATED_UNDERSCORES = re.compile(r"_{2,}")
-
-def normalize(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text)
-    return text.lower()
 
 def parse_user_ref(value: str) -> int | str:
     ref = value.strip().lstrip("@")
@@ -33,7 +28,7 @@ def join_name(first_name: str | None, last_name: str | None) -> str:
     return " ".join(part for part in (first_name, last_name) if part)
 
 
-def user_db_filename(
+def user_export_filename(
     tg_id: int,
     username: str | None,
     first_name: str | None = None,
@@ -42,9 +37,9 @@ def user_db_filename(
     for candidate in (username, join_name(first_name, last_name)):
         slug = _slugify(candidate)
         if slug:
-            return f"{slug}_{tg_id}.db"
+            return f"{slug}_{tg_id}.txt"
 
-    return f"{tg_id}.db"
+    return f"{tg_id}.txt"
 
 
 def parse_args():
@@ -74,6 +69,15 @@ def parse_args():
             "Target user (@username or tg_id) for user-comments, "
             "or a search query (part of a name or username) for find-user"
         )
+    )
+
+    parser.add_argument(
+        "--refresh-text",
+        action="store_true",
+        help=(
+            "user-comments: also take the text of already stored comments "
+            "from Telegram again"
+        ),
     )
 
     args = parser.parse_args()

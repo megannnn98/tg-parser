@@ -23,7 +23,7 @@ export function UsersPage() {
 
   const collect = useCollectJob((job) => {
     void queryClient.invalidateQueries({ queryKey: ["profiles"] });
-    navigate(`/users/${encodeURIComponent(job.db_name!)}`);
+    navigate(`/users/${job.tg_id!}`);
   });
 
   function onSubmit(event: FormEvent) {
@@ -72,14 +72,14 @@ export function UsersPage() {
       <QueryState
         query={profiles}
         isEmpty={isEmptyList}
-        empty="В каталоге нет скачанных user DB с таблицей user_messages."
+        empty="Комментарии пока не скачаны ни для одного пользователя."
       >
         {(data) => (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.map((profile) => (
               <Link
-                key={profile.db_name}
-                to={`/users/${encodeURIComponent(profile.db_name)}`}
+                key={profile.tg_id}
+                to={`/users/${profile.tg_id}`}
                 className="rounded-lg border bg-card p-4 transition-colors hover:border-primary"
               >
                 <p className="font-semibold">{profile.display_username}</p>
@@ -87,7 +87,6 @@ export function UsersPage() {
                 <p className="text-sm text-muted-foreground">
                   {profile.total_messages} сообщений, {profile.channel_count} каналов
                 </p>
-                <p className="text-sm break-all text-muted-foreground">{profile.db_name}</p>
               </Link>
             ))}
           </div>

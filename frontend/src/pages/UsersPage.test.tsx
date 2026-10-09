@@ -15,7 +15,6 @@ vi.mock("@/api/generated", () => ({
 }));
 
 const profile = {
-  db_name: "vasya_7.db",
   tg_id: 7,
   username: "vasya",
   display_name: null,
@@ -25,7 +24,7 @@ const profile = {
   channels: []
 };
 
-function doneJob(db_name: string) {
+function doneJob(tg_id: number) {
   return {
     job_id: "j1",
     user_ref: "@petya",
@@ -34,7 +33,7 @@ function doneJob(db_name: string) {
     resolved: { tg_id: 8, username: "petya", display_name: null },
     channels: [{ channel: "chan_a", status: "done", saved: 2, error: null }],
     saved_total: 2,
-    db_name,
+    tg_id,
     error: null
   };
 }
@@ -48,14 +47,14 @@ beforeEach(() => {
 });
 
 function renderUsers() {
-  return renderPage(<UsersPage />, { routes: { "/users/:dbName": <p>profile page</p> } });
+  return renderPage(<UsersPage />, { routes: { "/users/:tgId": <p>profile page</p> } });
 }
 
 it("links every profile to its page", async () => {
   renderUsers();
 
   const link = await screen.findByRole("link", { name: /@vasya/ });
-  expect(link.getAttribute("href")).toBe("/users/vasya_7.db");
+  expect(link.getAttribute("href")).toBe("/users/7");
   expect(link.textContent).toContain("3 сообщений, 2 каналов");
 });
 
@@ -64,12 +63,12 @@ it("says when no user database is downloaded", async () => {
 
   renderUsers();
 
-  expect(await screen.findByText(/нет скачанных user DB/)).toBeTruthy();
+  expect(await screen.findByText(/пока не скачаны/)).toBeTruthy();
 });
 
 it("collects a user's comments and opens the new profile", async () => {
   vi.mocked(startCollect).mockReturnValue(ok({ job_id: "j1" }) as never);
-  vi.mocked(collectStatus).mockReturnValue(ok(doneJob("petya_8.db")) as never);
+  vi.mocked(collectStatus).mockReturnValue(ok(doneJob(8)) as never);
 
   renderUsers();
   fireEvent.change(screen.getByLabelText("Юзернейм"), { target: { value: "@petya" } });
@@ -95,7 +94,7 @@ it("shows the job's error and the failed channels", async () => {
   vi.mocked(startCollect).mockReturnValue(ok({ job_id: "j1" }) as never);
   vi.mocked(collectStatus).mockReturnValue(
     ok({
-      ...doneJob("x.db"),
+      ...doneJob(8),
       state: "error",
       error: "FLOOD_WAIT",
       channels: [{ channel: "chan_a", status: "failed", saved: 0, error: "private" }]

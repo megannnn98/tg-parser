@@ -197,18 +197,18 @@
         }
       }
     },
-    "/api/v1/users/{db_name}": {
+    "/api/v1/users/{tg_id}": {
       "get": {
         "summary": "Get User",
         "operationId": "get_user",
         "parameters": [
           {
-            "name": "db_name",
+            "name": "tg_id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Db Name"
+              "type": "integer",
+              "title": "Tg Id"
             }
           }
         ],
@@ -236,18 +236,18 @@
         }
       }
     },
-    "/api/v1/users/{db_name}/comments.txt": {
+    "/api/v1/users/{tg_id}/comments.txt": {
       "get": {
         "summary": "Export User Comments",
         "operationId": "export_user_comments",
         "parameters": [
           {
-            "name": "db_name",
+            "name": "tg_id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Db Name"
+              "type": "integer",
+              "title": "Tg Id"
             }
           }
         ],
@@ -275,18 +275,18 @@
         }
       }
     },
-    "/api/v1/users/{db_name}/political-coords": {
+    "/api/v1/users/{tg_id}/political-coords": {
       "post": {
         "summary": "Analyze Political",
         "operationId": "analyze_political",
         "parameters": [
           {
-            "name": "db_name",
+            "name": "tg_id",
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Db Name"
+              "type": "integer",
+              "title": "Tg Id"
             }
           }
         ],
@@ -313,10 +313,296 @@
           }
         }
       }
+    },
+    "/api/v1/users/{tg_id}/position-comparisons": {
+      "get": {
+        "summary": "Get Position Comparisons",
+        "operationId": "get_position_comparisons",
+        "parameters": [
+          {
+            "name": "tg_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tg Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionResults"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{tg_id}/search": {
+      "get": {
+        "summary": "Search User Comments",
+        "description": "The user's comments closest in meaning to `q`.\n\n`context=false` ranks every comment by itself, without its chunk: the\nplain message search the default ranking is compared with.",
+        "operationId": "search_user_comments",
+        "parameters": [
+          {
+            "name": "tg_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tg Id"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500,
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "context",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Context"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/position-analysis": {
+      "post": {
+        "summary": "Start Position Analysis",
+        "operationId": "start_position_analysis",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgress"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AnalysisProgress": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "running",
+              "done",
+              "error",
+              "interrupted",
+              "provider_changed"
+            ],
+            "title": "State",
+            "default": "idle"
+          },
+          "phase": {
+            "type": "string",
+            "title": "Phase",
+            "default": ""
+          },
+          "processed_comments": {
+            "type": "integer",
+            "title": "Processed Comments",
+            "default": 0
+          },
+          "total_comments": {
+            "type": "integer",
+            "title": "Total Comments",
+            "default": 0
+          },
+          "cached_comments": {
+            "type": "integer",
+            "title": "Cached Comments",
+            "default": 0
+          },
+          "rejected_comments": {
+            "type": "integer",
+            "title": "Rejected Comments",
+            "default": 0
+          },
+          "rejection_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Rejection Reasons"
+          },
+          "processed_embeddings": {
+            "type": "integer",
+            "title": "Processed Embeddings",
+            "default": 0
+          },
+          "total_embeddings": {
+            "type": "integer",
+            "title": "Total Embeddings",
+            "default": 0
+          },
+          "cached_embeddings": {
+            "type": "integer",
+            "title": "Cached Embeddings",
+            "default": 0
+          },
+          "processed_questions": {
+            "type": "integer",
+            "title": "Processed Questions",
+            "default": 0
+          },
+          "total_questions": {
+            "type": "integer",
+            "title": "Total Questions",
+            "default": 0
+          },
+          "extraction_requests": {
+            "type": "integer",
+            "title": "Extraction Requests",
+            "default": 0
+          },
+          "split_batches": {
+            "type": "integer",
+            "title": "Split Batches",
+            "default": 0
+          },
+          "activity": {
+            "type": "string",
+            "title": "Activity",
+            "default": ""
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "processed_pairs": {
+            "type": "integer",
+            "title": "Processed Pairs",
+            "default": 0
+          },
+          "total_pairs": {
+            "type": "integer",
+            "title": "Total Pairs",
+            "default": 0
+          },
+          "processed_relations": {
+            "type": "integer",
+            "title": "Processed Relations",
+            "default": 0
+          },
+          "total_relations": {
+            "type": "integer",
+            "title": "Total Relations",
+            "default": 0
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "phase",
+          "processed_comments",
+          "total_comments",
+          "cached_comments",
+          "rejected_comments",
+          "rejection_reasons",
+          "processed_embeddings",
+          "total_embeddings",
+          "cached_embeddings",
+          "processed_questions",
+          "total_questions",
+          "extraction_requests",
+          "split_batches",
+          "activity",
+          "updated_at",
+          "processed_pairs",
+          "total_pairs",
+          "processed_relations",
+          "total_relations",
+          "error"
+        ],
+        "title": "AnalysisProgress"
+      },
       "AxisCounts": {
         "properties": {
           "left_count": {
@@ -450,6 +736,80 @@
         ],
         "title": "CollectRequest"
       },
+      "Comparison": {
+        "properties": {
+          "tg_id": {
+            "type": "integer",
+            "title": "Tg Id"
+          },
+          "display_username": {
+            "type": "string",
+            "title": "Display Username"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "comparable_questions": {
+            "type": "integer",
+            "title": "Comparable Questions",
+            "default": 0
+          },
+          "common_questions": {
+            "type": "integer",
+            "title": "Common Questions",
+            "default": 0
+          },
+          "agreements": {
+            "type": "integer",
+            "title": "Agreements",
+            "default": 0
+          },
+          "partial": {
+            "type": "integer",
+            "title": "Partial",
+            "default": 0
+          },
+          "disagreements": {
+            "type": "integer",
+            "title": "Disagreements",
+            "default": 0
+          },
+          "eligible": {
+            "type": "boolean",
+            "title": "Eligible",
+            "default": false
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/QuestionMatch"
+            },
+            "type": "array",
+            "title": "Questions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tg_id",
+          "display_username",
+          "score",
+          "comparable_questions",
+          "common_questions",
+          "agreements",
+          "partial",
+          "disagreements",
+          "eligible",
+          "questions"
+        ],
+        "title": "Comparison"
+      },
       "DayCount": {
         "properties": {
           "date": {
@@ -467,6 +827,83 @@
           "count"
         ],
         "title": "DayCount"
+      },
+      "EmbeddingDetails": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "dimensions": {
+            "type": "integer",
+            "title": "Dimensions"
+          },
+          "storage": {
+            "type": "string",
+            "title": "Storage"
+          },
+          "saved_vectors": {
+            "type": "integer",
+            "title": "Saved Vectors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model",
+          "version",
+          "dimensions",
+          "storage",
+          "saved_vectors"
+        ],
+        "title": "EmbeddingDetails"
+      },
+      "Evidence": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "quote": {
+            "type": "string",
+            "title": "Quote"
+          },
+          "date": {
+            "type": "string",
+            "title": "Date"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "position": {
+            "type": "string",
+            "title": "Position"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "quote",
+          "date",
+          "channel",
+          "message_id",
+          "position",
+          "question"
+        ],
+        "title": "Evidence"
       },
       "HTTPValidationError": {
         "properties": {
@@ -571,16 +1008,16 @@
             "type": "integer",
             "title": "Saved Total"
           },
-          "db_name": {
+          "tg_id": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Db Name"
+            "title": "Tg Id"
           },
           "error": {
             "anyOf": [
@@ -603,7 +1040,7 @@
           "resolved",
           "channels",
           "saved_total",
-          "db_name",
+          "tg_id",
           "error"
         ],
         "title": "JobStatus"
@@ -639,12 +1076,90 @@
         ],
         "title": "PoliticalCoords"
       },
+      "PositionResults": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "needs_update": {
+            "type": "boolean",
+            "title": "Needs Update",
+            "default": false
+          },
+          "incomplete": {
+            "type": "boolean",
+            "title": "Incomplete",
+            "default": false
+          },
+          "progress": {
+            "$ref": "#/components/schemas/AnalysisProgress"
+          },
+          "embeddings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EmbeddingDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "position_agreement",
+              "text_similarity"
+            ],
+            "title": "Method",
+            "default": "position_agreement"
+          },
+          "similar_authors": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarAuthor"
+            },
+            "type": "array",
+            "title": "Similar Authors"
+          },
+          "ranking": {
+            "items": {
+              "$ref": "#/components/schemas/Comparison"
+            },
+            "type": "array",
+            "title": "Ranking"
+          },
+          "insufficient": {
+            "items": {
+              "$ref": "#/components/schemas/Comparison"
+            },
+            "type": "array",
+            "title": "Insufficient"
+          },
+          "partial_results": {
+            "items": {
+              "$ref": "#/components/schemas/Comparison"
+            },
+            "type": "array",
+            "title": "Partial Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "needs_update",
+          "incomplete",
+          "progress",
+          "embeddings",
+          "method",
+          "similar_authors",
+          "ranking",
+          "insufficient",
+          "partial_results"
+        ],
+        "title": "PositionResults"
+      },
       "Profile": {
         "properties": {
-          "db_name": {
-            "type": "string",
-            "title": "Db Name"
-          },
           "tg_id": {
             "type": "integer",
             "title": "Tg Id"
@@ -693,7 +1208,6 @@
         },
         "type": "object",
         "required": [
-          "db_name",
           "tg_id",
           "username",
           "display_name",
@@ -703,6 +1217,57 @@
           "channels"
         ],
         "title": "Profile"
+      },
+      "QuestionMatch": {
+        "properties": {
+          "question": {
+            "type": "string",
+            "title": "Question"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "agreement",
+              "partial",
+              "disagreement",
+              "unclear"
+            ],
+            "title": "Result"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation"
+          },
+          "left": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "right": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "question",
+          "result",
+          "explanation",
+          "left",
+          "right"
+        ],
+        "title": "QuestionMatch"
       },
       "ResolvedUser": {
         "properties": {
@@ -740,6 +1305,160 @@
           "display_name"
         ],
         "title": "ResolvedUser"
+      },
+      "SearchHit": {
+        "properties": {
+          "message_id": {
+            "type": "integer",
+            "title": "Message Id"
+          },
+          "tg_message_id": {
+            "type": "integer",
+            "title": "Tg Message Id"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Date"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "message_score": {
+            "type": "number",
+            "title": "Message Score"
+          },
+          "chunk_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Score"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "tg_message_id",
+          "channel",
+          "date",
+          "text",
+          "message_score",
+          "chunk_score",
+          "score"
+        ],
+        "title": "SearchHit"
+      },
+      "SearchResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "indexed_messages": {
+            "type": "integer",
+            "title": "Indexed Messages"
+          },
+          "total_messages": {
+            "type": "integer",
+            "title": "Total Messages"
+          },
+          "used_context": {
+            "type": "boolean",
+            "title": "Used Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "results",
+          "indexed_messages",
+          "total_messages",
+          "used_context"
+        ],
+        "title": "SearchResponse"
+      },
+      "SimilarAuthor": {
+        "properties": {
+          "tg_id": {
+            "type": "integer",
+            "title": "Tg Id"
+          },
+          "display_username": {
+            "type": "string",
+            "title": "Display Username"
+          },
+          "similarity": {
+            "type": "number",
+            "title": "Similarity"
+          },
+          "left_comments": {
+            "type": "integer",
+            "title": "Left Comments"
+          },
+          "right_comments": {
+            "type": "integer",
+            "title": "Right Comments"
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/TextMatch"
+            },
+            "type": "array",
+            "title": "Examples"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tg_id",
+          "display_username",
+          "similarity",
+          "left_comments",
+          "right_comments",
+          "examples"
+        ],
+        "title": "SimilarAuthor"
+      },
+      "TextMatch": {
+        "properties": {
+          "similarity": {
+            "type": "number",
+            "title": "Similarity"
+          },
+          "left": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "right": {
+            "$ref": "#/components/schemas/Evidence"
+          }
+        },
+        "type": "object",
+        "required": [
+          "similarity",
+          "left",
+          "right"
+        ],
+        "title": "TextMatch"
       },
       "UserDetail": {
         "properties": {

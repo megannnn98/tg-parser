@@ -1,28 +1,27 @@
 # parser/user_collector.py
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable
 
 from parser.channel_sweep import resolve_channel_context, sweep_channels
 from parser.logger import get_logger
 from parser.measure_time import measure_time
-from parser.storage import get_db
 from parser.telegram import (
     TelegramUser,
     fetch_user_messages,
     get_client,
     resolve_user,
 )
-from parser.user_storage import init_user_db, save_user_messages_many
-from parser.utils import join_name, user_db_filename
+from parser.utils import join_name
+from services.ingest import CommentIngest
 
 
 @dataclass(frozen=True)
 class UserCollectorConfig:
     channels: list[str]
+    # Take the text of already stored comments from Telegram again.
+    refresh_text: bool = False
 
 
 @dataclass(frozen=True)
@@ -31,6 +30,33 @@ class ChannelProgress:
     status: str  # "started" | "done" | "failed"
     saved: int = 0
     error: str | None = None
+
+
+@dataclass(frozen=True)
+class UserCollectResult:
+    tg_id: int
+    username: str | None
+    channels_scanned: int
+    channels_failed: int
+    fetched: int
+    new: int
+
+    @property
+    def duplicates(self) -> int:
+        return self.fetched - self.new
+
+    def render(self) -> str:
+        return (
+            "Resolved user:\n"
+            f"tg_id={self.tg_id}\n"
+            f"username={self.username}\n"
+            "\n"
+            f"channels scanned: {self.channels_scanned}\n"
+            f"channels failed: {self.channels_failed}\n"
+            f"messages fetched: {self.fetched}\n"
+            f"new messages: {self.new}\n"
+            f"duplicates: {self.duplicates}"
+        )
 
 
 @dataclass(frozen=True)
@@ -44,173 +70,118 @@ class UserCollectorDeps:
 
 
 async def collect_user_channel(
-    db,
+    ingest: CommentIngest,
     tg_client,
     channel_username: str,
+    user_id: int,
     tg_id: int,
-    username: str | None,
+    refresh_text: bool,
     fetch_user_messages_fn: Callable,
     logger,
-) -> int:
+) -> tuple[int, int]:
+    """Returns (comments fetched, new rows)."""
     channel = await resolve_channel_context(tg_client, channel_username, logger)
     if channel is None:
-        return 0
+        return 0, 0
 
-    rows = [
-        (
-            tg_id,
-            username,
-            channel_username,
-            msg.message_id,
-            msg.text,
-            msg.date,
-        )
+    channel_id = await ingest.save_channel(
+        channel_username, getattr(channel.chat, "id", None), channel.linked_chat_id
+    )
+    comments = [
+        msg
         async for msg in fetch_user_messages_fn(
             tg_client, channel.linked_chat_id, tg_id
         )
     ]
-
-    if not rows:
-        logger.info(f"[{channel_username}] fetched 0, new 0")
-        return 0
-
-    changes_before = db.total_changes
-    await db.execute("BEGIN")
-    try:
-        await save_user_messages_many(db, rows)
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        raise
-
-    new_rows = db.total_changes - changes_before
-    logger.info(f"[{channel_username}] fetched {len(rows)}, new {new_rows}")
-    return new_rows
-
-
-def _try_load_existing_user(
-    data_dir: Path, user_ref: int | str
-) -> tuple[int, str | None, Path] | None:
-    if not data_dir.exists():
-        return None
-
-    if isinstance(user_ref, int):
-        candidates = list(data_dir.glob(f"*_{user_ref}.db"))
-        candidates.append(data_dir / f"{user_ref}.db")
-    else:
-        ref_casefold = user_ref.casefold()
-        candidates = []
-        for db_path in data_dir.glob("*.db"):
-            stem = db_path.stem
-            idx = stem.rfind("_")
-            if idx >= 0 and stem[:idx].casefold() == ref_casefold:
-                candidates.append(db_path)
-
-    for db_path in candidates:
-        if not db_path.exists():
-            continue
-        try:
-            db = sqlite3.connect(str(db_path))
-            try:
-                row = db.execute(
-                    "SELECT tg_id, username FROM user_messages LIMIT 1"
-                ).fetchone()
-                if row is not None:
-                    return (row[0], row[1], db_path)
-            finally:
-                db.close()
-        except Exception:
-            continue
-
-    return None
+    new_rows = await ingest.save_user_comments(
+        user_id, channel_id, comments, refresh_text
+    )
+    logger.info(f"[{channel_username}] fetched {len(comments)}, new {new_rows}")
+    return len(comments), new_rows
 
 
 @measure_time(name="collect_user_comments")
 async def collect_user_comments(
-    data_dir: Path,
+    sessions,
     cfg: UserCollectorConfig,
     user_ref: int | str,
     deps: UserCollectorDeps = UserCollectorDeps(),
-    db_path_override: Path | None = None,
-) -> tuple[Path, int]:
+) -> UserCollectResult:
     if not cfg.channels:
         raise RuntimeError("CHANNELS are empty")
 
     logger = deps.logger_factory("user_collector")
+    ingest = CommentIngest(sessions)
+    fetched = 0
     saved = 0
 
     tg_client = deps.tg_client_factory()
     async with tg_client:
-        existing = _try_load_existing_user(data_dir, user_ref)
+        # A user collected before is not resolved again: Telegram rate-limits
+        # username lookups hard (FLOOD_WAIT of hours).
+        existing = await ingest.find_profile(user_ref)
         if existing is not None:
-            tg_id, username, db_path = existing
-            resolved = TelegramUser(
-                tg_id=tg_id, username=username, first_name=None, last_name=None
-            )
+            user_id, resolved = existing
+            await ingest.touch_profile(user_id)
             logger.info(
-                f"Reusing existing profile for {user_ref}: "
-                f"tg_id={tg_id}, username={username}"
+                f"Reusing stored profile for {user_ref}: "
+                f"tg_id={resolved.tg_id}, username={resolved.username}"
             )
-            deps.on_user_resolved(resolved)
         else:
             resolved = await deps.resolve_user_fn(tg_client, user_ref)
-            tg_id = resolved.tg_id
-            username = resolved.username
+            user_id = await ingest.save_profile(resolved)
             logger.info(
-                f"Resolved {user_ref} -> tg_id={tg_id}, username={username}, "
+                f"Resolved {user_ref} -> tg_id={resolved.tg_id}, "
+                f"username={resolved.username}, "
                 f"name={join_name(resolved.first_name, resolved.last_name)!r}"
             )
-            deps.on_user_resolved(resolved)
-            db_path = db_path_override or data_dir / user_db_filename(
-                tg_id,
-                username,
-                resolved.first_name,
-                resolved.last_name,
+        deps.on_user_resolved(resolved)
+
+        async def one(channel_username: str) -> None:
+            nonlocal fetched, saved
+            deps.on_channel_progress(
+                ChannelProgress(channel=channel_username, status="started")
             )
-        db = await get_db(db_path)
-        try:
-            await init_user_db(db)
-
-            async def one(channel_username: str) -> None:
-                nonlocal saved
-                deps.on_channel_progress(
-                    ChannelProgress(channel=channel_username, status="started")
+            try:
+                found, added = await collect_user_channel(
+                    ingest=ingest,
+                    tg_client=tg_client,
+                    channel_username=channel_username,
+                    user_id=user_id,
+                    tg_id=resolved.tg_id,
+                    refresh_text=cfg.refresh_text,
+                    fetch_user_messages_fn=deps.fetch_user_messages_fn,
+                    logger=logger,
                 )
-                try:
-                    added = await collect_user_channel(
-                        db=db,
-                        tg_client=tg_client,
-                        channel_username=channel_username,
-                        tg_id=tg_id,
-                        username=username,
-                        fetch_user_messages_fn=deps.fetch_user_messages_fn,
-                        logger=logger,
-                    )
-                except Exception as exc:
-                    deps.on_channel_progress(
-                        ChannelProgress(
-                            channel=channel_username, status="failed", error=str(exc)
-                        )
-                    )
-                    raise
-
-                saved += added
+            except Exception as exc:
                 deps.on_channel_progress(
                     ChannelProgress(
-                        channel=channel_username, status="done", saved=added
+                        channel=channel_username, status="failed", error=str(exc)
                     )
                 )
+                raise
 
-            await sweep_channels(
-                cfg.channels,
-                logger,
-                one,
-                fatal_message=lambda channel_username: (
-                    f"[{channel_username}] fatal session error after saving "
-                    f"{saved} rows, aborting sweep"
-                ),
+            fetched += found
+            saved += added
+            deps.on_channel_progress(
+                ChannelProgress(channel=channel_username, status="done", saved=added)
             )
-        finally:
-            await db.close()
 
-    return db_path, saved
+        failed = await sweep_channels(
+            cfg.channels,
+            logger,
+            one,
+            fatal_message=lambda channel_username: (
+                f"[{channel_username}] fatal session error after saving "
+                f"{saved} rows, aborting sweep"
+            ),
+        )
+
+    return UserCollectResult(
+        tg_id=resolved.tg_id,
+        username=resolved.username,
+        channels_scanned=len(cfg.channels),
+        channels_failed=failed,
+        fetched=fetched,
+        new=saved,
+    )
