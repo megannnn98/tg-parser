@@ -496,10 +496,9 @@ docker compose exec -T postgres \
 
 ## Что не сделано
 
-- Рекомендованный в отчёте способ поиска (сообщения с учётом чанков) есть только
-  в скрипте замеров; в приложении поиска по эмбеддингам нет.
-- Раздел сравнения авторов по-прежнему хранит свои векторы как JSON в
-  `analysis_cache`, а не в `message_embeddings`.
+- В `analysis_cache` могут оставаться векторы прежней версии сравнения авторов
+  (namespace `comment-embeddings:…`). Они больше не читаются; удалить их:
+  `DELETE FROM analysis_cache WHERE namespace LIKE 'comment-embeddings:%'`.
 - В `.env.example` нужно добавить `DATABASE_URL` и `APP_TIMEZONE`.
 - Раздел README о запуске на телефоне через Termux не учитывает, что теперь
   нужен доступный PostgreSQL.

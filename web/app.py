@@ -237,6 +237,30 @@ async def start_position_analysis(request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+class _LockedEncoder:
+    """The search encoder behind the lock that the search takes."""
+
+    def __init__(self, encoder, lock):
+        self.spec = encoder.spec
+        self._encoder = encoder
+        self._lock = lock
+
+    def encode_passages(self, texts):
+        with self._lock:
+            return self._encoder.encode_passages(texts)
+
+
+async def _embed_profile_comments(app) -> int:
+    # Imported here: the embedding tables need numpy, the web application
+    # must start without it.
+    from embeddings.pipeline import embed_profile_messages
+
+    return await embed_profile_messages(
+        app.state.database.sessions,
+        _LockedEncoder(app.state.search_encoder, app.state.search_lock),
+    )
+
+
 def create_app(
     database_url: str | None = None,
     channels: list[str] | None = None,
@@ -271,7 +295,7 @@ def create_app(
         app.state.analysis_store = AnalysisStore(database_url)
         position_service = LocalTextAnalysis(
             app.state.analysis_store,
-            model_cache_dir=Path(os.getenv("DATA_DIR", "data")) / "position-model-cache",
+            embed_missing=lambda: _embed_profile_comments(app),
         )
     app.state.position_jobs = PositionJobs(position_service)
     # The model the embedding tables were filled with; its weights are loaded

@@ -1,12 +1,11 @@
-"""Cached local comment embeddings and author similarity without external inference."""
+"""Author similarity from the stored comment embeddings, without external inference."""
 from __future__ import annotations
 
 import asyncio
-from collections import Counter
 from contextlib import nullcontext
 from itertools import combinations
 
-from parser.comment_embeddings import LocalCommentE5
+from embeddings.e5 import PRODUCTION_MODEL
 from parser.position_analysis import PositionAnalysis
 from parser.position_comparison import AnalysisProgress, EmbeddingDetails, Evidence, PositionResults, SimilarAuthor
 from db.analysis_store import digest
@@ -15,11 +14,17 @@ from db.analysis_store import digest
 class LocalTextAnalysis(PositionAnalysis):
     # Reuse source loading, cancellation-safe persistence and progress reporting.
     # This constructor deliberately does not create a gateway or provider guard.
-    def __init__(self, store, embedder=None, model_cache_dir=None):
+    def __init__(self, store, model=PRODUCTION_MODEL, embed_missing=None):
+        """`model` names the vectors of message_embeddings to compare.
+
+        `embed_missing` is awaited before they are read, so that comments
+        collected after the last embedding run take part.
+        """
         self.store = store
-        self.embedder = embedder or LocalCommentE5(cache_dir=model_cache_dir)
-        self.version = digest(["local-comment-similarity:centroid:32-examples:v1", self.embedder.version])
-        self._vectors = "comment-embeddings:" + self.embedder.version
+        self.model = model
+        self._embed_missing = embed_missing
+        self._vectors = f"{model.name}@{model.revision}:{model.passage_prefix.strip()}{model.pooling}:l2"
+        self.version = digest(["local-comment-similarity:centroid:32-examples:v2", self._vectors])
 
     def ensure_provider_unchanged(self):
         pass
@@ -46,57 +51,27 @@ class LocalTextAnalysis(PositionAnalysis):
         return matrix / norms
 
     async def _embed_comments(self, comments, checkpoint):
-        import numpy as np
-        texts = {digest(c["text"]): c["text"] for c in comments}
-        keys = list(texts)
-        indices = {key: i for i, key in enumerate(keys)}
-        frequencies = Counter(digest(c["text"]) for c in comments)
-        matrix = None
-        missing = []
-        processed = cached_count = processed_comments = 0
-        await self._report(checkpoint, phase="embeddings", total_embeddings=len(keys),
-                           activity="Проверка кеша эмбеддингов самих комментариев")
-        # Decode only a small cache page at a time; retain compact float32 vectors.
-        for start in range(0, len(keys), 256):
-            batch = keys[start:start + 256]
-            cache = await asyncio.to_thread(self.store.get_many, self._vectors, batch)
-            for key in batch:
-                if key not in cache:
-                    missing.append(key)
-                    continue
-                vector = self._validated_vectors([cache[key]], 1,
-                                                 getattr(self.embedder, "dimensions", None) if matrix is None else matrix.shape[1])[0]
-                if matrix is None:
-                    matrix = np.empty((len(keys), len(vector)), dtype=np.float32)
-                matrix[indices[key]] = vector
-                processed += 1
-                cached_count += frequencies[key]
-                processed_comments += frequencies[key]
-            await self._report(checkpoint, processed_embeddings=processed, cached_embeddings=processed,
-                               processed_comments=processed_comments, cached_comments=cached_count,
-                               activity="Загрузка сохранённых эмбеддингов комментариев")
-        for start in range(0, len(missing), 16):
-            batch = missing[start:start + 16]
-            preparing = isinstance(self.embedder, LocalCommentE5) and self.embedder._model is None
-            await self._report(checkpoint, activity=(
-                "Подготовка локальной E5: при первом запуске скачиваются веса модели" if preparing else
-                f"Локальная E5: создание эмбеддингов {len(batch)} комментариев"
-            ))
-            values = self._validated_vectors(
-                await self.embedder.encode([texts[key] for key in batch]), len(batch),
-                getattr(self.embedder, "dimensions", None) if matrix is None else matrix.shape[1],
-            )
-            await self._store_write(self.store.put_many, self._vectors,
-                                    {key: vector.tolist() for key, vector in zip(batch, values)})
-            if matrix is None:
-                matrix = np.empty((len(keys), values.shape[1]), dtype=np.float32)
-            for key, vector in zip(batch, values):
-                matrix[indices[key]] = vector
-                processed_comments += frequencies[key]
-            processed += len(batch)
-            await self._report(checkpoint, processed_embeddings=processed, processed_comments=processed_comments,
-                               activity="Эмбеддинги комментариев сохранены в PostgreSQL")
-        return indices, matrix
+        """The comments that have a vector, the row of each text and the rows."""
+        await self._report(checkpoint, phase="embeddings",
+                           activity="Создание эмбеддингов новых комментариев")
+        if self._embed_missing is not None:
+            await self._embed_missing()
+        await self._report(checkpoint, activity="Загрузка эмбеддингов комментариев из PostgreSQL")
+        stored = await asyncio.to_thread(self.store.comment_vectors, self.model)
+        comments = [c for c in comments if c["id"] in stored]
+        indices, rows = {}, []
+        for comment in comments:
+            key = digest(comment["text"])
+            if key not in indices:
+                indices[key] = len(rows)
+                rows.append(stored[comment["id"]])
+        if not rows:
+            raise ValueError("Нет эмбеддингов комментариев. Постройте их: python -m scripts.embed --messages")
+        matrix = self._validated_vectors(rows, len(rows), self.model.dimensions)
+        await self._report(checkpoint, total_embeddings=len(rows), processed_embeddings=len(rows),
+                           cached_embeddings=len(rows), processed_comments=len(comments),
+                           cached_comments=len(comments), activity="Эмбеддинги комментариев загружены")
+        return comments, indices, matrix
 
     @staticmethod
     def _author_profiles(comments, indices, matrix):
@@ -149,7 +124,7 @@ class LocalTextAnalysis(PositionAnalysis):
                 profiles, comments = await asyncio.to_thread(self._load_sources)
                 comments = [c for c in comments if c["text"] and c["text"].strip()]
                 await self._report(checkpoint, total_comments=len(comments), activity="Комментарии прочитаны")
-                indices, matrix = await self._embed_comments(comments, checkpoint)
+                comments, indices, matrix = await self._embed_comments(comments, checkpoint)
                 vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, matrix)
                 users = sorted(vectors)
                 await self._report(checkpoint, phase="comparisons", total_pairs=len(users) * (len(users) - 1) // 2,
@@ -195,9 +170,10 @@ class LocalTextAnalysis(PositionAnalysis):
             method="text_similarity", version=current["version"] if current else self.version, progress=progress,
             incomplete=bool(current and current["progress"]["state"] != "done"),
             needs_update=bool(current and (current["version"] != self.version or current["manifest"] != self.store.manifest())),
-            embeddings=EmbeddingDetails(model=getattr(self.embedder, "model_name", self.embedder.version),
-                                        version=self.embedder.version, dimensions=getattr(self.embedder, "dimensions", 0),
-                                        storage=self.store.location, saved_vectors=self.store.count(self._vectors)),
+            embeddings=EmbeddingDetails(model=self.model.name, version=self._vectors,
+                                        dimensions=self.model.dimensions,
+                                        storage="PostgreSQL, таблица message_embeddings",
+                                        saved_vectors=self.store.count_comment_vectors(self.model)),
         )
         for pair in (current or {}).get("pairs", {}).values():
             if tg_id not in (pair["left"], pair["right"]):
