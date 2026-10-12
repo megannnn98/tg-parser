@@ -645,6 +645,15 @@ export type TextMatch = {
     similarity: number;
     left: Evidence;
     right: Evidence;
+    /**
+     * Local NLI relation check for this pair.
+     */
+    relation?: 'unchecked' | 'contradiction' | 'unclear';
+    /**
+     * Probability assigned to contradiction when the NLI check ran.
+     */
+    relation_confidence?: number | null;
+    sarcasm_suspected?: boolean;
 };
 
 /**

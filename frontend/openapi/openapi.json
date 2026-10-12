@@ -1544,6 +1544,33 @@
           },
           "right": {
             "$ref": "#/components/schemas/Evidence"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "unchecked",
+              "contradiction",
+              "unclear"
+            ],
+            "default": "unchecked",
+            "title": "Relation"
+          },
+          "relation_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Relation Confidence"
+          },
+          "sarcasm_suspected": {
+            "type": "boolean",
+            "default": false,
+            "title": "Sarcasm Suspected"
           }
         },
         "type": "object",

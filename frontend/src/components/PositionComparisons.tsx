@@ -46,6 +46,10 @@ function SimilarPair({ value }: { value: SimilarAuthor }) {
       <p className="my-3 text-sm text-muted-foreground">E5 отбирает близкие по смыслу пары комментариев, затем Cross-Encoder уточняет их порядок. Комментарии короче 80 символов не учитываются.</p>
       <div className="space-y-4">{value.examples.map((match, i) => <div key={i} className="space-y-2">
         <p className="text-sm">Сходство текстов: {match.similarity.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</p>
+        {match.relation === "contradiction" ? <p className="text-sm font-medium text-destructive">Вероятное противоречие позиций ({Math.round((match.relation_confidence ?? 0) * 100)}%)</p> :
+          match.relation === "unclear" ? <p className="text-sm text-muted-foreground">Отношение позиций неясно: согласие не подтверждено.</p> :
+          <p className="text-sm text-muted-foreground">Отношение позиций не проверено локальной NLI-моделью.</p>}
+        {match.sarcasm_suspected ? <p className="text-sm font-medium text-amber-700">Возможен сарказм: трактуйте пару с учётом контекста.</p> : null}
         <div className="grid gap-3 lg:grid-cols-2">
           <Statement value={match.left} label="Выбранный автор" />
           <Statement value={match.right} label={value.display_username} />

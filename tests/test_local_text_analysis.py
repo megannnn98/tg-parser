@@ -28,9 +28,10 @@ class Embedding:
         self.stored.append(self.store.embed(self.encode))
 
 
-def analysis(tmp_path, encode=vector, reranker=None):
+def analysis(tmp_path, encode=vector, reranker=None, stance_verifier=None):
     store = store_for(tmp_path)
-    service = LocalTextAnalysis(store, MODEL, Embedding(store, encode), reranker=reranker)
+    service = LocalTextAnalysis(store, MODEL, Embedding(store, encode), reranker=reranker,
+                                stance_verifier=stance_verifier)
     service.example_min_chars = 0  # The comments of these tests are single words.
     return service
 
@@ -124,6 +125,24 @@ def test_reranker_orders_the_embedding_candidates_before_examples_are_chosen(tmp
     asyncio.run(service.run())
     [author] = service.results(1).similar_authors
     assert [(e.left.text, e.right.text) for e in author.examples] == [("a", "c"), ("b", "d")]
+
+
+def test_nli_marks_a_retrieved_pair_as_a_contradiction(tmp_path):
+    from embeddings.stance import StanceJudgement
+
+    class Verifier:
+        def __call__(self, pairs):
+            assert pairs == [("a", "b")]
+            return [StanceJudgement("contradiction", 0.91)]
+
+    for user, text in ((1, "a"), (2, "b"), (3, "z")):
+        create_source(tmp_path, user, [(1, text, "2026-01-01")])
+    service = analysis(tmp_path, lambda text: [1, 0] if text in {"a", "b"} else [0, 1], stance_verifier=Verifier())
+    service.example_min_chars = 0
+    asyncio.run(service.run())
+    match = service.results(1).similar_authors[0].examples[0]
+    assert match.relation == "contradiction"
+    assert match.relation_confidence == 0.91
 
 
 def test_a_text_both_authors_wrote_is_not_an_example(tmp_path):

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 export type SimilarityGraph = {
   nodes: { tg_id: number; display_username: string }[];
-  edges: { left: number; right: number; similarity: number }[];
+  edges: { left: number; right: number; similarity: number; contradictions: number; checked_examples: number }[];
 };
 
 const MAX_NEIGHBOURS = 10;
@@ -51,16 +51,16 @@ export function AuthorSimilarityGraph({ graph }: { graph: SimilarityGraph }) {
           const labelX = x + Math.cos(angle) * 32, labelY = y + Math.sin(angle) * 32;
           const anchor = Math.cos(angle) > 0.3 ? "start" : Math.cos(angle) < -0.3 ? "end" : "middle";
           return <g key={node.tg_id}>
-            <line x1={center} y1={center} x2={x} y2={y} stroke="#2563eb" strokeOpacity={0.35 + relative * 0.65} strokeWidth={2 + relative * 5} />
-            <title>{`${selected.display_username} ↔ ${node.display_username}: ${percentage(edge.similarity)}`}</title>
+            <line x1={center} y1={center} x2={x} y2={y} stroke={edge.contradictions ? "#dc2626" : "#2563eb"} strokeDasharray={edge.contradictions ? "10 7" : undefined} strokeOpacity={0.35 + relative * 0.65} strokeWidth={2 + relative * 5} />
+            <title>{`${selected.display_username} ↔ ${node.display_username}: ${percentage(edge.similarity)}${edge.contradictions ? `; противоречий: ${edge.contradictions}` : ""}`}</title>
             <a href={`/users/${node.tg_id}`}><circle cx={x} cy={y} r="22" fill="#0f172a" /><text x={x} y={y + 5} textAnchor="middle" fill="white" fontSize="12">{percentage(edge.similarity)}</text><text x={labelX} y={labelY} textAnchor={anchor} dominantBaseline="middle" fill="#0f172a" fontSize="16" fontWeight="600">{node.display_username}</text></a>
           </g>;
         })}
         <a href={`/users/${selected.tg_id}`}><circle cx={center} cy={center} r="58" fill="#0f172a" /><text x={center} y={center - 3} textAnchor="middle" fill="white" fontSize="17" fontWeight="700">{selected.display_username}</text><text x={center} y={center + 20} textAnchor="middle" fill="#bfdbfe" fontSize="13">выбранный автор</text></a>
       </svg>
-      <p className="text-xs text-muted-foreground">Толще и ярче линия — выше сходство. Нажмите на имя или круг, чтобы открыть профиль.</p>
+      <p className="text-xs text-muted-foreground">Толще и ярче линия — выше сходство; красный пунктир — в примерах найдены противоречия позиций. Нажмите на имя или круг, чтобы открыть профиль.</p>
       {totalLinks > links.length ? <p className="text-xs text-muted-foreground">Показаны {links.length} из {totalLinks} связей выбранного автора.</p> : null}
-      <div className="grid gap-2 text-sm sm:grid-cols-2">{neighbours.map(({ edge, node }) => <Link key={`pair-${node.tg_id}`} className="rounded-md border px-3 py-2 hover:border-primary hover:bg-muted/40" to={`/users/${node.tg_id}`}><span className="font-medium">{node.display_username}</span><span className="text-muted-foreground"> · {percentage(edge.similarity)}</span></Link>)}</div>
+      <div className="grid gap-2 text-sm sm:grid-cols-2">{neighbours.map(({ edge, node }) => <Link key={`pair-${node.tg_id}`} className="rounded-md border px-3 py-2 hover:border-primary hover:bg-muted/40" to={`/users/${node.tg_id}`}><span className="font-medium">{node.display_username}</span><span className="text-muted-foreground"> · {percentage(edge.similarity)}</span>{edge.contradictions ? <span className="block text-xs text-destructive">Противоречий в примерах: {edge.contradictions}</span> : null}</Link>)}</div>
     </> : <p className="text-sm text-muted-foreground">Для {selected.display_username} пока нет опубликованных сравнений с другими авторами.</p>}
   </div>;
 }

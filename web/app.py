@@ -30,6 +30,9 @@ from parser.local_text_analysis import LocalTextAnalysis
 from parser.position_comparison import AnalysisProgress, PositionResults
 from embeddings.e5 import PRODUCTION_MODEL, E5Encoder
 from embeddings.reranker import CrossEncoderReranker
+from embeddings.stance import NliStanceVerifier
+from embeddings.sarcasm import RussianSarcasmDetector
+from embeddings.stance_llm import OllamaStanceVerifier
 from services.profiles import ProfileNotFound, ProfileService
 from services.search import SemanticSearch
 from web.auth import LoginThrottle, auth_api, require_session
@@ -339,6 +342,16 @@ def create_app(
             reranker=CrossEncoderReranker(
                 cache_dir=Path(os.getenv("DATA_DIR", "data")) / "reranker-cache"
             ),
+            # Disabled until the local NLI weights have been provisioned.  The
+            # verifier itself is always offline and fails rather than downloads.
+            stance_verifier=(OllamaStanceVerifier(
+                os.getenv("OLLAMA_URL", "http://host.docker.internal:11434"), os.getenv("OLLAMA_STANCE_MODEL", "qwen3:8b")
+            ) if os.getenv("OLLAMA_STANCE_ENABLED") == "1" else NliStanceVerifier(
+                cache_dir=Path(os.getenv("DATA_DIR", "data")) / "stance-cache"
+            ) if os.getenv("STANCE_NLI_ENABLED") == "1" else None),
+            sarcasm_detector=(RussianSarcasmDetector(
+                cache_dir=Path(os.getenv("DATA_DIR", "data")) / "sarcasm-cache"
+            ) if os.getenv("SARCASM_DETECTOR_ENABLED") == "1" else None),
         )
     app.state.position_jobs = PositionJobs(position_service)
     # The model the embedding tables were filled with; its weights are loaded
