@@ -48,7 +48,7 @@ it("shows local text similarity without presenting it as political agreement", a
   const evidence = value.ranking[0].questions[0];
   value.similar_authors = [{ tg_id: 2, display_username: "@user2",
     similarity: 0.87, left_comments: 12, right_comments: 18,
-    examples: [{ similarity: 0.92, relation: "contradiction", relation_confidence: 0.91,
+    examples: [{ similarity: 0.92, relation: "contradiction", relation_confidence: 0.91, sarcasm_suspected: false,
       left: { ...evidence.left!, position: "", quote: "" }, right: { ...evidence.right!, position: "", quote: "" } }] }];
   value.ranking = [];
   vi.mocked(getPositionComparisons).mockReturnValue(ok(value) as never);
