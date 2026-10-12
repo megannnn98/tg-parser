@@ -69,6 +69,7 @@ class E5Encoder:
                 revision=self.spec.revision,
                 trust_remote_code=False,
                 cache_dir=self._cache_dir,
+                local_files_only=True,
             )
         return self._tokenizer
 
@@ -112,6 +113,7 @@ class E5Encoder:
                 trust_remote_code=False,
                 use_safetensors=True,
                 cache_dir=self._cache_dir,
+                local_files_only=True,
             ).eval()
             self._model = model.to(device)
         return self._model

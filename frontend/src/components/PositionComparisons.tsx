@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import {
-  getPositionComparisons, startPositionAnalysis, type Comparison, type Evidence, type SimilarAuthor
+  getPositionComparisons, startUserPositionAnalysis, type Comparison, type Evidence, type SimilarAuthor
 } from "@/api/generated";
 import { PositionAnalysisProgress } from "@/components/PositionAnalysisProgress";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ function SimilarPair({ value }: { value: SimilarAuthor }) {
     <p className="text-sm text-muted-foreground">Уникальных комментариев: {value.left_comments} у выбранного автора, {value.right_comments} у сравниваемого.</p>
     <details>
       <summary className="cursor-pointer text-sm text-primary">Похожие высказывания: {value.display_username}</summary>
-      <p className="my-3 text-sm text-muted-foreground">Самые близкие по смыслу пары комментариев двух авторов. Комментарии короче 80 символов не учитываются.</p>
+      <p className="my-3 text-sm text-muted-foreground">E5 отбирает близкие по смыслу пары комментариев, затем Cross-Encoder уточняет их порядок. Комментарии короче 80 символов не учитываются.</p>
       <div className="space-y-4">{value.examples.map((match, i) => <div key={i} className="space-y-2">
         <p className="text-sm">Сходство текстов: {match.similarity.toLocaleString("ru-RU", { maximumFractionDigits: 4 })}</p>
         <div className="grid gap-3 lg:grid-cols-2">
@@ -101,7 +101,7 @@ export function PositionComparisons({ tgId, hasComments = true }: { tgId: number
     retry: 2
   });
   const start = useMutation({
-    mutationFn: () => unwrap(startPositionAnalysis()),
+    mutationFn: () => unwrap(startUserPositionAnalysis({ path: { tg_id: tgId } })),
     onSuccess: () => { void results.refetch(); }
   });
   const reset = start.reset;
@@ -122,7 +122,7 @@ export function PositionComparisons({ tgId, hasComments = true }: { tgId: number
           </p>
           <Button variant="outline" disabled={running || providerChanged || !hasComments || results.isPending || results.isError} onClick={() => start.mutate()}>
             {running ? "Анализ выполняется…" : resume ? "Продолжить анализ" :
-              value?.needs_update ? "Обновить сравнение" : local ? "Создать эмбеддинги и сравнить" : "Найти близкие позиции"}
+              value?.needs_update ? "Обновить сравнение этого автора" : local ? "Сравнить этого автора с другими" : "Найти близкие позиции"}
           </Button>
         </div>
         {!hasComments ? <p className="text-sm text-muted-foreground">Для сравнения нужны комментарии автора.</p> : null}

@@ -1,13 +1,13 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { getPositionComparisons, startPositionAnalysis, type PositionResults } from "@/api/generated";
+import { getPositionComparisons, startUserPositionAnalysis, type PositionResults } from "@/api/generated";
 import { PositionComparisons } from "@/components/PositionComparisons";
 import { ok, renderPage } from "@/test/render";
 
 vi.mock("@/api/generated", () => ({
   getPositionComparisons: vi.fn(),
-  startPositionAnalysis: vi.fn()
+  startUserPositionAnalysis: vi.fn()
 }));
 
 function response(): PositionResults {
@@ -39,7 +39,7 @@ function response(): PositionResults {
 
 beforeEach(() => {
   vi.mocked(getPositionComparisons).mockReset().mockReturnValue(ok(response()) as never);
-  vi.mocked(startPositionAnalysis).mockReset().mockReturnValue(ok({ state: "running" }) as never);
+  vi.mocked(startUserPositionAnalysis).mockReset().mockReturnValue(ok({ state: "running" }) as never);
 });
 
 it("shows local text similarity without presenting it as political agreement", async () => {
@@ -59,11 +59,12 @@ it("shows local text similarity without presenting it as political agreement", a
   expect(screen.queryByText(/3 сравнимых/)).toBeNull();
   expect(screen.getByText(/Кодируются сами комментарии/)).toBeTruthy();
   fireEvent.click(screen.getByText("Похожие высказывания: @user2"));
+  expect(screen.getByText(/Cross-Encoder уточняет их порядок/)).toBeTruthy();
   expect(screen.getByText("Я против запрета митингов")).toBeTruthy();
   expect(screen.queryByText(/Подтверждение:/)).toBeNull();
-  expect(startPositionAnalysis).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Создать эмбеддинги и сравнить" }));
-  await waitFor(() => expect(startPositionAnalysis).toHaveBeenCalledTimes(1));
+  expect(startUserPositionAnalysis).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Сравнить этого автора с другими" }));
+  await waitFor(() => expect(startUserPositionAnalysis).toHaveBeenCalledWith({ path: { tg_id: 1 } }));
 });
 
 it("shows agreement coverage and original statements in pair details", async () => {
@@ -89,7 +90,7 @@ it("does not mix partial comparisons with the completed ranking", async () => {
   expect(await screen.findByText(/Неполный результат/)).toBeTruthy();
   expect(screen.getByText("DeepSeek недоступен")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /Продолжить анализ/ }));
-  await waitFor(() => expect(startPositionAnalysis).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(startUserPositionAnalysis).toHaveBeenCalledWith({ path: { tg_id: 1 } }));
 });
 
 it("starts analysis only on click, polls progress and shows the saved result", async () => {
@@ -107,11 +108,11 @@ it("starts analysis only on click, polls progress and shows the saved result", a
     .mockReturnValue(ok(response()) as never);
   renderPage(<PositionComparisons tgId={1} />);
   await waitFor(() => expect(screen.getByRole("button", { name: "Найти близкие позиции" }).hasAttribute("disabled")).toBe(false));
-  expect(startPositionAnalysis).not.toHaveBeenCalled();
+  expect(startUserPositionAnalysis).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Найти близкие позиции" }));
   expect(await screen.findByText(/Неполный результат/)).toBeTruthy();
   expect(await screen.findByRole("link", { name: "@user2" }, { timeout: 4000 })).toBeTruthy();
-  expect(startPositionAnalysis).toHaveBeenCalledTimes(1);
+  expect(startUserPositionAnalysis).toHaveBeenCalledWith({ path: { tg_id: 1 } });
 });
 
 it("keeps the saved ranking visible after a failed update", async () => {
@@ -136,5 +137,5 @@ it("blocks retries after a provider change until the analysis generation changes
   renderPage(<PositionComparisons tgId={1} />);
   expect(await screen.findByText(value.progress.error)).toBeTruthy();
   expect(screen.getByRole("button", { name: /Найти близкие позиции/ }).hasAttribute("disabled")).toBe(true);
-  expect(startPositionAnalysis).not.toHaveBeenCalled();
+  expect(startUserPositionAnalysis).not.toHaveBeenCalled();
 });

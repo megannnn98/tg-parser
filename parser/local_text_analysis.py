@@ -4,6 +4,8 @@ from __future__ import annotations
 import asyncio
 from contextlib import nullcontext
 from itertools import combinations
+from math import isfinite
+from typing import Callable
 
 from embeddings.e5 import PRODUCTION_MODEL
 from parser.position_analysis import PositionAnalysis
@@ -12,6 +14,8 @@ from db.analysis_store import digest
 
 
 _EXAMPLES = 5
+# E5 retrieves these before the more expensive cross-encoder scores them.
+_RERANK_CANDIDATES = 32
 # Comments of one author compared at a time; bounds the memory of the scores.
 _EXAMPLE_BLOCK = 1024
 
@@ -23,7 +27,8 @@ class LocalTextAnalysis(PositionAnalysis):
 
     # Reuse source loading, cancellation-safe persistence and progress reporting.
     # This constructor deliberately does not create a gateway or provider guard.
-    def __init__(self, store, model=PRODUCTION_MODEL, embed_missing=None):
+    def __init__(self, store, model=PRODUCTION_MODEL, embed_missing=None,
+                 reranker: Callable[[list[tuple[str, str]]], list[float]] | None = None):
         """`model` names the vectors of message_embeddings to compare.
 
         `embed_missing` is awaited before they are read, so that comments
@@ -32,16 +37,24 @@ class LocalTextAnalysis(PositionAnalysis):
         self.store = store
         self.model = model
         self._embed_missing = embed_missing
+        self.reranker = reranker
         self._vectors = f"{model.name}@{model.revision}:{model.passage_prefix.strip()}{model.pooling}:l2"
-        self.version = digest(["local-comment-similarity:centered-centroid:closest-comments:v4", self._vectors])
+        reranker_version = (
+            f"{reranker.spec.name}@{reranker.spec.revision}" if reranker is not None and hasattr(reranker, "spec")
+            else "none"
+        )
+        self.version = digest(["local-comment-similarity:centered-centroid:closest-comments:rerank-v5",
+                               self._vectors, reranker_version])
 
     def ensure_provider_unchanged(self):
         pass
 
-    def initial_checkpoint(self):
+    def initial_checkpoint(self, *, focus_tg_id: int | None = None):
+        previous = self.store.get("published", "latest") or {}
+        previous_pairs = previous.get("pairs", {}) if previous.get("method") == "text_similarity" else {}
         return {
             "method": "text_similarity", "version": self.version,
-            "manifest": self.store.manifest(), "pairs": {},
+            "manifest": self.store.manifest(), "pairs": previous_pairs.copy(),
             "progress": AnalysisProgress(state="running", phase="comments",
                                          activity="Чтение комментариев из базы").model_dump(),
         }
@@ -120,7 +133,7 @@ class LocalTextAnalysis(PositionAnalysis):
         return vectors, candidates, {user: len(items) for user, items in by_user.items()}
 
     @staticmethod
-    def _closest_comments(a, b, matrix):
+    def _closest_comments(a, b, matrix, reranker=None):
         """Up to five (similarity, a index, b index): the closest comments of two authors.
 
         Every comment of one author is compared with every comment of the
@@ -144,9 +157,20 @@ class LocalTextAnalysis(PositionAnalysis):
             closest = np.argpartition(-scores, keep - 1, axis=1)[:, :keep]
             found.extend((float(scores[i, j]), start + i, int(j))
                          for i, columns in enumerate(closest) for j in columns)
+        candidates = [match for match in sorted(found, key=lambda match: (-match[0], match[1], match[2]))
+                      if match[0] != -np.inf]
+        if reranker is not None and candidates:
+            retrieved, candidates = candidates, candidates[:_RERANK_CANDIDATES]
+            reranked = reranker([(a[i][1]["text"], b[j][1]["text"]) for _, i, j in candidates])
+            if len(reranked) != len(candidates) or not all(isfinite(score) for score in reranked):
+                raise ValueError("Reranker вернул некорректные оценки")
+            candidates = [candidate for _, candidate in sorted(zip(reranked, candidates), key=lambda value: -value[0])]
+            # A top E5 pool can be dominated by one repeated formulation.
+            # Retain its remaining candidates to fill five distinct examples.
+            candidates.extend(retrieved[_RERANK_CANDIDATES:])
         matches, used_left, used_right = [], set(), set()
-        for score, i, j in sorted(found, key=lambda match: (-match[0], match[1], match[2])):
-            if i in used_left or j in used_right or score == -np.inf:
+        for score, i, j in candidates:
+            if i in used_left or j in used_right:
                 continue
             used_left.add(i)
             used_right.add(j)
@@ -156,7 +180,7 @@ class LocalTextAnalysis(PositionAnalysis):
         return matches
 
     @classmethod
-    def _pair(cls, left, right, vectors, candidates, counts, matrix):
+    def _pair(cls, left, right, vectors, candidates, counts, matrix, reranker=None):
         import numpy as np
         a, b = candidates[left], candidates[right]
 
@@ -165,12 +189,12 @@ class LocalTextAnalysis(PositionAnalysis):
                             quote="", position="").model_dump()
         matches = [{"similarity": round(float(np.clip(score, -1, 1)), 4),
                     "left": evidence(a[i][1]), "right": evidence(b[j][1])}
-                   for score, i, j in cls._closest_comments(a, b, matrix)]
+                   for score, i, j in cls._closest_comments(a, b, matrix, reranker)]
         return {"left": left, "right": right,
                 "similarity": round(float(np.clip(vectors[left] @ vectors[right], -1, 1)), 4),
                 "left_comments": counts[left], "right_comments": counts[right], "examples": matches}
 
-    async def run(self, *, lock_held=False, checkpoint=None):
+    async def run(self, *, lock_held=False, checkpoint=None, focus_tg_id: int | None = None):
         with nullcontext() if lock_held else self.store.analysis_lock():
             checkpoint = checkpoint or self.initial_checkpoint()
             try:
@@ -182,11 +206,28 @@ class LocalTextAnalysis(PositionAnalysis):
                 centered = await asyncio.to_thread(self._centered, comments, indices, matrix)
                 vectors, examples, counts = await asyncio.to_thread(self._author_profiles, comments, indices, centered)
                 users = sorted(vectors)
-                await self._report(checkpoint, phase="comparisons", total_pairs=len(users) * (len(users) - 1) // 2,
-                                   total_relations=len(users) * (len(users) - 1) // 2,
+                pairs = list(combinations(users, 2))
+                if focus_tg_id is not None:
+                    pairs = [pair for pair in pairs if focus_tg_id in pair]
+                await self._report(checkpoint, phase="comparisons", total_pairs=len(pairs),
+                                   total_relations=len(pairs),
                                    activity="Локальное сравнение средних эмбеддингов авторов")
-                for left, right in combinations(users, 2):
-                    pair = await asyncio.to_thread(self._pair, left, right, vectors, examples, counts, matrix)
+                for left, right in pairs:
+                    left_profile, right_profile = profiles[left], profiles[right]
+                    left_name = left_profile.display_username or str(left)
+                    right_name = right_profile.display_username or str(right)
+                    await self._report(
+                        checkpoint,
+                        activity=(
+                            f"Сравниваются {left_name} ({counts[left]} уник. комментариев) и "
+                            f"{right_name} ({counts[right]} уник. комментариев); "
+                            f"пара {checkpoint['progress']['processed_pairs'] + 1} из "
+                            f"{checkpoint['progress']['total_pairs']}"
+                        ),
+                    )
+                    pair = await asyncio.to_thread(
+                        self._pair, left, right, vectors, examples, counts, matrix, self.reranker
+                    )
                     pair["profiles"] = {str(u): {"tg_id": u,
                                                "display_username": profiles[u].display_username} for u in (left, right)}
                     checkpoint["pairs"][f"{left}:{right}"] = pair
@@ -245,3 +286,17 @@ class LocalTextAnalysis(PositionAnalysis):
         result.similar_authors.sort(key=lambda a: (-a.similarity, a.tg_id))
         result.similar_authors = result.similar_authors[:10]
         return result
+
+    def graph(self):
+        """The published positive-similarity network for the overview page."""
+        published = self.store.get("published", "latest") or {}
+        if published.get("method") != "text_similarity":
+            return {"nodes": [], "edges": []}
+        nodes, edges = {}, []
+        for pair in published.get("pairs", {}).values():
+            if pair["similarity"] <= 0:
+                continue
+            for user in (pair["left"], pair["right"]):
+                nodes[user] = pair["profiles"][str(user)]
+            edges.append({"left": pair["left"], "right": pair["right"], "similarity": pair["similarity"]})
+        return {"nodes": list(nodes.values()), "edges": edges}

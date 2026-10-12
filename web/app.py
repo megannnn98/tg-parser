@@ -29,6 +29,7 @@ from parser.position_analysis import PositionAnalysis
 from parser.local_text_analysis import LocalTextAnalysis
 from parser.position_comparison import AnalysisProgress, PositionResults
 from embeddings.e5 import PRODUCTION_MODEL, E5Encoder
+from embeddings.reranker import CrossEncoderReranker
 from services.profiles import ProfileNotFound, ProfileService
 from services.search import SemanticSearch
 from web.auth import LoginThrottle, auth_api, require_session
@@ -47,6 +48,7 @@ from web.schemas import (
     PoliticalCoords,
     Profile,
     SearchHit,
+    SimilarityGraph,
     SearchResponse,
     UserDetail,
 )
@@ -72,6 +74,11 @@ async def list_profiles(request: Request):
 @api.get("/channels", response_model=ChannelsResponse)
 def get_channels(request: Request):
     return ChannelsResponse(channels=request.app.state.channels)
+
+
+@api.get("/position-comparisons/graph", response_model=SimilarityGraph)
+def get_similarity_graph(request: Request):
+    return request.app.state.position_jobs.service.graph()
 
 
 @api.post("/channels", response_model=ChannelsResponse)
@@ -242,6 +249,17 @@ async def start_position_analysis(request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@api.post("/users/{tg_id}/position-analysis", status_code=202, response_model=AnalysisProgress)
+async def start_user_position_analysis(request: Request, tg_id: int):
+    try:
+        await _profiles(request).require(tg_id)
+        return request.app.state.position_jobs.start(focus_tg_id=tg_id)
+    except ProfileNotFound as exc:
+        raise _user_not_found() from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 class _LockedEncoder:
     """The search encoder behind the lock that the search takes."""
 
@@ -318,6 +336,9 @@ def create_app(
         position_service = LocalTextAnalysis(
             app.state.analysis_store,
             embed_missing=lambda: _embed_profile_comments(app),
+            reranker=CrossEncoderReranker(
+                cache_dir=Path(os.getenv("DATA_DIR", "data")) / "reranker-cache"
+            ),
         )
     app.state.position_jobs = PositionJobs(position_service)
     # The model the embedding tables were filled with; its weights are loaded

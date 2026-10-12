@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyzePoliticalData, AnalyzePoliticalErrors, AnalyzePoliticalResponses, CancelCollectData, CancelCollectErrors, CancelCollectResponses, CollectStatusData, CollectStatusErrors, CollectStatusResponses, ExportUserCommentsData, ExportUserCommentsErrors, ExportUserCommentsResponses, GetChannelsData, GetChannelsResponses, GetPositionComparisonsData, GetPositionComparisonsErrors, GetPositionComparisonsResponses, GetUserData, GetUserErrors, GetUserResponses, ListProfilesData, ListProfilesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, SaveChannelsListData, SaveChannelsListErrors, SaveChannelsListResponses, SearchUserCommentsData, SearchUserCommentsErrors, SearchUserCommentsResponses, StartCollectData, StartCollectErrors, StartCollectResponses, StartPositionAnalysisData, StartPositionAnalysisResponses } from './types.gen';
+import type { AnalyzePoliticalData, AnalyzePoliticalErrors, AnalyzePoliticalResponses, CancelCollectData, CancelCollectErrors, CancelCollectResponses, CollectStatusData, CollectStatusErrors, CollectStatusResponses, ExportUserCommentsData, ExportUserCommentsErrors, ExportUserCommentsResponses, GetChannelsData, GetChannelsResponses, GetPositionComparisonsData, GetPositionComparisonsErrors, GetPositionComparisonsResponses, GetUserData, GetUserErrors, GetUserResponses, ListProfilesData, ListProfilesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, SaveChannelsListData, SaveChannelsListErrors, SaveChannelsListResponses, SearchUserCommentsData, SearchUserCommentsErrors, SearchUserCommentsResponses, StartCollectData, StartCollectErrors, StartCollectResponses, StartPositionAnalysisData, StartPositionAnalysisResponses, StartUserPositionAnalysisData, StartUserPositionAnalysisResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -113,3 +113,5 @@ export const searchUserComments = <ThrowOnError extends boolean = false>(options
  * Start Position Analysis
  */
 export const startPositionAnalysis = <ThrowOnError extends boolean = false>(options?: Options<StartPositionAnalysisData, ThrowOnError>) => (options?.client ?? client).post<StartPositionAnalysisResponses, unknown, ThrowOnError>({ url: '/api/v1/position-analysis', ...options });
+
+export const startUserPositionAnalysis = <ThrowOnError extends boolean = false>(options: Options<StartUserPositionAnalysisData, ThrowOnError>) => (options.client ?? client).post<StartUserPositionAnalysisResponses, unknown, ThrowOnError>({ url: '/api/v1/users/{tg_id}/position-analysis', ...options });

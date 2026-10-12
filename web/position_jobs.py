@@ -13,7 +13,7 @@ class PositionJobs:
         self.service = service
         self.task: asyncio.Task | None = None
 
-    def start(self) -> AnalysisProgress:
+    def start(self, focus_tg_id: int | None = None) -> AnalysisProgress:
         if self.task is not None and not self.task.done():
             raise RuntimeError("Анализ позиций уже выполняется")
         self.service.ensure_provider_unchanged()
@@ -21,10 +21,10 @@ class PositionJobs:
         lock = self.service.store.analysis_lock()
         lock.__enter__()
         try:
-            checkpoint = self.service.initial_checkpoint()
+            checkpoint = self.service.initial_checkpoint(focus_tg_id=focus_tg_id)
             # GET immediately after POST must already report running, so polling starts.
             self.service.store.put("run", "latest", checkpoint)
-            self.task = asyncio.create_task(self._run(checkpoint))
+            self.task = asyncio.create_task(self._run(checkpoint, focus_tg_id))
             # The callback also runs if cancellation happens before the coroutine starts.
             self.task.add_done_callback(lambda _: lock.__exit__(None, None, None))
         except BaseException:
@@ -32,9 +32,9 @@ class PositionJobs:
             raise
         return AnalysisProgress(state="running", phase="comments")
 
-    async def _run(self, checkpoint):
+    async def _run(self, checkpoint, focus_tg_id):
         try:
-            await self.service.run(lock_held=True, checkpoint=checkpoint)
+            await self.service.run(lock_held=True, checkpoint=checkpoint, focus_tg_id=focus_tg_id)
         except asyncio.CancelledError:
             raise
         except Exception:

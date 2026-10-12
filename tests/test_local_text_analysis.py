@@ -28,9 +28,9 @@ class Embedding:
         self.stored.append(self.store.embed(self.encode))
 
 
-def analysis(tmp_path, encode=vector):
+def analysis(tmp_path, encode=vector, reranker=None):
     store = store_for(tmp_path)
-    service = LocalTextAnalysis(store, MODEL, Embedding(store, encode))
+    service = LocalTextAnalysis(store, MODEL, Embedding(store, encode), reranker=reranker)
     service.example_min_chars = 0  # The comments of these tests are single words.
     return service
 
@@ -55,6 +55,7 @@ def test_stored_vectors_rank_authors_without_openrouter(tmp_path, monkeypatch):
     assert result.progress.processed_comments == 6
     assert result.progress.processed_embeddings == 3  # One row per distinct text.
     assert result.progress.processed_pairs == 3
+    assert result.progress.activity == "Локальное сравнение завершено"
     assert result.embeddings.saved_vectors == 6
     assert result.embeddings.model == "local-test" and result.embeddings.dimensions == 2
     asyncio.run(service.run())
@@ -107,6 +108,22 @@ def test_examples_are_the_closest_comments_and_none_is_shown_twice(tmp_path):
 def test_one_comment_close_to_several_is_shown_once(tmp_path):
     vectors = {"a": [1, 0], "d": [1, 0.2], "e": [1, 0.6]}
     assert examples_of(tmp_path, ["a"], ["d", "e"], vectors) == [(0.9806, "a", "d")]
+
+
+def test_reranker_orders_the_embedding_candidates_before_examples_are_chosen(tmp_path):
+    vectors = {"a": [1, 0], "b": [1, 0.1], "c": [1, 0.2], "d": [1, 0.3]}
+    for user, texts in ((1, ["a", "b"]), (2, ["c", "d"]), (3, ["z"])):
+        create_source(tmp_path, user, [(i, text, "2026-01-01") for i, text in enumerate(texts)])
+
+    def rerank(pairs):
+        assert pairs == [("b", "c"), ("b", "d"), ("a", "c"), ("a", "d")]
+        return [0.1, 0.2, 0.9, 0.8]
+
+    service = analysis(tmp_path, lambda text: vectors.get(text[0], [0, 1]), reranker=rerank)
+    service.example_min_chars = 0
+    asyncio.run(service.run())
+    [author] = service.results(1).similar_authors
+    assert [(e.left.text, e.right.text) for e in author.examples] == [("a", "c"), ("b", "d")]
 
 
 def test_a_text_both_authors_wrote_is_not_an_example(tmp_path):

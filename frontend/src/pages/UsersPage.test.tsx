@@ -1,7 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
-import { collectStatus, getChannels, listProfiles, startCollect } from "@/api/generated";
+import { collectStatus, getChannels, listProfiles, startCollect, startPositionAnalysis } from "@/api/generated";
 import { UsersPage } from "@/pages/UsersPage";
 import { failed, ok, renderPage } from "@/test/render";
 
@@ -10,7 +10,8 @@ vi.mock("@/api/generated", () => ({
   getChannels: vi.fn(),
   startCollect: vi.fn(),
   collectStatus: vi.fn(),
-  cancelCollect: vi.fn()
+  cancelCollect: vi.fn(),
+  startPositionAnalysis: vi.fn()
 }));
 
 const profile = {
@@ -42,6 +43,7 @@ beforeEach(() => {
   vi.mocked(getChannels).mockReset().mockReturnValue(ok({ channels: ["chan_a", "chan_b"] }) as never);
   vi.mocked(startCollect).mockReset();
   vi.mocked(collectStatus).mockReset();
+  vi.mocked(startPositionAnalysis).mockReset().mockReturnValue(ok({ state: "running" }) as never);
 });
 
 function renderUsers() {
@@ -54,6 +56,11 @@ it("links every profile to its page", async () => {
   const link = await screen.findByRole("link", { name: /@vasya/ });
   expect(link.getAttribute("href")).toBe("/users/7");
   expect(link.textContent).toContain("3 сообщений, 2 каналов");
+});
+
+it("offers the global comparison on the users page", async () => {
+  renderUsers();
+  expect(await screen.findByRole("button", { name: "Сравнить всех авторов между собой" })).toBeTruthy();
 });
 
 it("says when no user database is downloaded", async () => {

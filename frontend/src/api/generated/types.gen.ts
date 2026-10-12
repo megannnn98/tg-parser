@@ -1065,3 +1065,11 @@ export type StartPositionAnalysisResponses = {
 };
 
 export type StartPositionAnalysisResponse = StartPositionAnalysisResponses[keyof StartPositionAnalysisResponses];
+
+export type StartUserPositionAnalysisData = {
+    path: { tg_id: number; };
+    url: '/api/v1/users/{tg_id}/position-analysis';
+};
+
+export type StartUserPositionAnalysisResponses = { 202: AnalysisProgress; };
+export type StartUserPositionAnalysisResponse = StartUserPositionAnalysisResponses[keyof StartUserPositionAnalysisResponses];

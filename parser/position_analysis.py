@@ -62,6 +62,9 @@ class PositionAnalysis:
             date_key(comment["date"])  # Fail explicitly instead of picking a false latest position.
         return profiles, comments
 
+    def graph(self):
+        return {"nodes": [], "edges": []}
+
     async def _store_write(self, method, *args):
         # A cancelled job must wait for its writer before releasing the analysis lock.
         task = asyncio.create_task(asyncio.to_thread(method, *args))
@@ -332,7 +335,7 @@ class PositionAnalysis:
         if self.store.get(self._namespace, "provider-changed"):
             raise ProviderChangedError("Изменилась версия модели DeepSeek; требуется новая версия анализа (POSITION_ANALYSIS_GENERATION)")
 
-    def initial_checkpoint(self):
+    def initial_checkpoint(self, *, focus_tg_id: int | None = None):
         return {
             "version": self.version, "manifest": self.store.manifest(),
             "pairs": {}, "progress": AnalysisProgress(
@@ -341,7 +344,7 @@ class PositionAnalysis:
             ).model_dump(),
         }
 
-    async def run(self, *, lock_held=False, checkpoint=None):
+    async def run(self, *, lock_held=False, checkpoint=None, focus_tg_id: int | None = None):
         with nullcontext() if lock_held else self.store.analysis_lock():
             self.ensure_provider_unchanged()
             # Another worker may have populated the identity since this instance ran.

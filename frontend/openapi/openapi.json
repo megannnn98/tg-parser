@@ -468,6 +468,45 @@
         }
       }
     },
+    "/api/v1/users/{tg_id}/position-analysis": {
+      "post": {
+        "summary": "Start User Position Analysis",
+        "operationId": "start_user_position_analysis",
+        "parameters": [
+          {
+            "name": "tg_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tg Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgress"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/position-analysis": {
       "post": {
         "summary": "Start Position Analysis",

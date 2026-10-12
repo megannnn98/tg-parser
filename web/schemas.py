@@ -177,3 +177,19 @@ class SearchResponse(BaseModel):
     indexed_messages: int
     total_messages: int
     used_context: bool
+
+
+class SimilarityGraphNode(BaseModel):
+    tg_id: int
+    display_username: str
+
+
+class SimilarityGraphEdge(BaseModel):
+    left: int
+    right: int
+    similarity: float
+
+
+class SimilarityGraph(BaseModel):
+    nodes: list[SimilarityGraphNode]
+    edges: list[SimilarityGraphEdge]

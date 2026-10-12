@@ -1,14 +1,15 @@
 import { type FormEvent, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
-import { getChannels, listProfiles } from "@/api/generated";
+import { getChannels, listProfiles, startPositionAnalysis } from "@/api/generated";
 import { CollectProgress } from "@/components/CollectProgress";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { isEmptyList, QueryState } from "@/components/QueryState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserAvatar } from "@/components/UserAvatar";
+import { AuthorSimilarityGraph, type SimilarityGraph } from "@/components/AuthorSimilarityGraph";
 import { Input } from "@/components/ui/input";
 import { useCollectJob } from "@/hooks/useCollectJob";
 import { unwrap } from "@/lib/api";
@@ -20,11 +21,17 @@ export function UsersPage() {
 
   const profiles = useQuery({ queryKey: ["profiles"], queryFn: () => unwrap(listProfiles()) });
   const channels = useQuery({ queryKey: ["channels"], queryFn: () => unwrap(getChannels()) });
+  const graph = useQuery({ queryKey: ["similarity-graph"], queryFn: async () => {
+    const response = await fetch("/api/v1/position-comparisons/graph");
+    if (!response.ok) throw new Error("Не удалось загрузить граф сходства");
+    return response.json() as Promise<SimilarityGraph>;
+  } });
 
   const collect = useCollectJob((job) => {
     void queryClient.invalidateQueries({ queryKey: ["profiles"] });
     navigate(`/users/${job.tg_id!}`);
   });
+  const compareAll = useMutation({ mutationFn: () => unwrap(startPositionAnalysis()) });
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -76,6 +83,22 @@ export function UsersPage() {
           </form>
           {collect.running || collect.job ? <CollectProgress job={collect.job} starting={collect.starting} /> : null}
           {collect.error ? <p className="text-sm text-destructive">{collect.error}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Карта похожих авторов</CardTitle></CardHeader>
+        <CardContent>{graph.isSuccess ? <AuthorSimilarityGraph graph={graph.data} /> : <p className="text-sm text-muted-foreground">Загрузка графа…</p>}</CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader><CardTitle>Сравнение всех авторов</CardTitle></CardHeader>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">Считает все пары собранных профилей и обновляет результаты на их страницах.</p>
+          <Button variant="outline" onClick={() => compareAll.mutate()} disabled={compareAll.isPending || compareAll.isSuccess || !profiles.data?.length}>
+            {compareAll.isSuccess ? "Анализ запущен" : compareAll.isPending ? "Анализ выполняется…" : "Сравнить всех авторов между собой"}
+          </Button>
+          {compareAll.isError ? <p role="alert" className="w-full text-sm text-destructive">{compareAll.error.message}</p> : null}
         </CardContent>
       </Card>
 
