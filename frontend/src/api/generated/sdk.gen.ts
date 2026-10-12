@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AnalyzePoliticalData, AnalyzePoliticalErrors, AnalyzePoliticalResponses, CancelCollectData, CancelCollectErrors, CancelCollectResponses, CollectStatusData, CollectStatusErrors, CollectStatusResponses, ExportUserCommentsData, ExportUserCommentsErrors, ExportUserCommentsResponses, GetChannelsData, GetChannelsResponses, GetPositionComparisonsData, GetPositionComparisonsErrors, GetPositionComparisonsResponses, GetUserData, GetUserErrors, GetUserResponses, ListProfilesData, ListProfilesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, SaveChannelsListData, SaveChannelsListErrors, SaveChannelsListResponses, SearchUserCommentsData, SearchUserCommentsErrors, SearchUserCommentsResponses, StartCollectData, StartCollectErrors, StartCollectResponses, StartPositionAnalysisData, StartPositionAnalysisResponses, StartUserPositionAnalysisData, StartUserPositionAnalysisResponses } from './types.gen';
+import type { AnalyzePoliticalData, AnalyzePoliticalErrors, AnalyzePoliticalResponses, CancelCollectData, CancelCollectErrors, CancelCollectResponses, CollectStatusData, CollectStatusErrors, CollectStatusResponses, ExportUserCommentsData, ExportUserCommentsErrors, ExportUserCommentsResponses, GetChannelsData, GetChannelsResponses, GetPositionComparisonsData, GetPositionComparisonsErrors, GetPositionComparisonsResponses, GetSimilarityGraphData, GetSimilarityGraphResponses, GetUserData, GetUserErrors, GetUserResponses, ListProfilesData, ListProfilesResponses, LoginData, LoginErrors, LoginResponses, LogoutData, LogoutResponses, SaveChannelsListData, SaveChannelsListErrors, SaveChannelsListResponses, SearchUserCommentsData, SearchUserCommentsErrors, SearchUserCommentsResponses, StartCollectData, StartCollectErrors, StartCollectResponses, StartPositionAnalysisData, StartPositionAnalysisResponses, StartUserPositionAnalysisData, StartUserPositionAnalysisErrors, StartUserPositionAnalysisResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -56,6 +56,11 @@ export const saveChannelsList = <ThrowOnError extends boolean = false>(options: 
         ...options.headers
     }
 });
+
+/**
+ * Get Similarity Graph
+ */
+export const getSimilarityGraph = <ThrowOnError extends boolean = false>(options?: Options<GetSimilarityGraphData, ThrowOnError>) => (options?.client ?? client).get<GetSimilarityGraphResponses, unknown, ThrowOnError>({ url: '/api/v1/position-comparisons/graph', ...options });
 
 /**
  * Start Collect
@@ -114,4 +119,7 @@ export const searchUserComments = <ThrowOnError extends boolean = false>(options
  */
 export const startPositionAnalysis = <ThrowOnError extends boolean = false>(options?: Options<StartPositionAnalysisData, ThrowOnError>) => (options?.client ?? client).post<StartPositionAnalysisResponses, unknown, ThrowOnError>({ url: '/api/v1/position-analysis', ...options });
 
-export const startUserPositionAnalysis = <ThrowOnError extends boolean = false>(options: Options<StartUserPositionAnalysisData, ThrowOnError>) => (options.client ?? client).post<StartUserPositionAnalysisResponses, unknown, ThrowOnError>({ url: '/api/v1/users/{tg_id}/position-analysis', ...options });
+/**
+ * Start User Position Analysis
+ */
+export const startUserPositionAnalysis = <ThrowOnError extends boolean = false>(options: Options<StartUserPositionAnalysisData, ThrowOnError>) => (options.client ?? client).post<StartUserPositionAnalysisResponses, StartUserPositionAnalysisErrors, ThrowOnError>({ url: '/api/v1/users/{tg_id}/position-analysis', ...options });

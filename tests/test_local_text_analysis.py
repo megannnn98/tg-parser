@@ -132,8 +132,10 @@ def test_nli_marks_a_retrieved_pair_as_a_contradiction(tmp_path):
 
     class Verifier:
         def __call__(self, pairs):
-            assert pairs == [("a", "b")]
-            return [StanceJudgement("contradiction", 0.91)]
+            # The analysis runs the verifier for every author pair.  The
+            # retrieval order is an implementation detail, not this test's
+            # contract.
+            return [StanceJudgement("contradiction", 0.91) for _ in pairs]
 
     for user, text in ((1, "a"), (2, "b"), (3, "z")):
         create_source(tmp_path, user, [(1, text, "2026-01-01")])

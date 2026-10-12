@@ -636,6 +636,60 @@ export type SimilarAuthor = {
 };
 
 /**
+ * SimilarityGraph
+ */
+export type SimilarityGraph = {
+    /**
+     * Nodes
+     */
+    nodes: Array<SimilarityGraphNode>;
+    /**
+     * Edges
+     */
+    edges: Array<SimilarityGraphEdge>;
+};
+
+/**
+ * SimilarityGraphEdge
+ */
+export type SimilarityGraphEdge = {
+    /**
+     * Left
+     */
+    left: number;
+    /**
+     * Right
+     */
+    right: number;
+    /**
+     * Similarity
+     */
+    similarity: number;
+    /**
+     * Contradictions
+     */
+    contradictions?: number;
+    /**
+     * Checked Examples
+     */
+    checked_examples?: number;
+};
+
+/**
+ * SimilarityGraphNode
+ */
+export type SimilarityGraphNode = {
+    /**
+     * Tg Id
+     */
+    tg_id: number;
+    /**
+     * Display Username
+     */
+    display_username: string;
+};
+
+/**
  * TextMatch
  */
 export type TextMatch = {
@@ -646,14 +700,17 @@ export type TextMatch = {
     left: Evidence;
     right: Evidence;
     /**
-     * Local NLI relation check for this pair.
+     * Relation
      */
-    relation?: 'unchecked' | 'contradiction' | 'unclear';
+    relation: 'unchecked' | 'contradiction' | 'unclear';
     /**
-     * Probability assigned to contradiction when the NLI check ran.
+     * Relation Confidence
      */
-    relation_confidence?: number | null;
-    sarcasm_suspected?: boolean;
+    relation_confidence: number | null;
+    /**
+     * Sarcasm Suspected
+     */
+    sarcasm_suspected: boolean;
 };
 
 /**
@@ -810,6 +867,22 @@ export type SaveChannelsListResponses = {
 };
 
 export type SaveChannelsListResponse = SaveChannelsListResponses[keyof SaveChannelsListResponses];
+
+export type GetSimilarityGraphData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/position-comparisons/graph';
+};
+
+export type GetSimilarityGraphResponses = {
+    /**
+     * Successful Response
+     */
+    200: SimilarityGraph;
+};
+
+export type GetSimilarityGraphResponse = GetSimilarityGraphResponses[keyof GetSimilarityGraphResponses];
 
 export type StartCollectData = {
     body: CollectRequest;
@@ -1076,9 +1149,31 @@ export type StartPositionAnalysisResponses = {
 export type StartPositionAnalysisResponse = StartPositionAnalysisResponses[keyof StartPositionAnalysisResponses];
 
 export type StartUserPositionAnalysisData = {
-    path: { tg_id: number; };
+    body?: never;
+    path: {
+        /**
+         * Tg Id
+         */
+        tg_id: number;
+    };
+    query?: never;
     url: '/api/v1/users/{tg_id}/position-analysis';
 };
 
-export type StartUserPositionAnalysisResponses = { 202: AnalysisProgress; };
+export type StartUserPositionAnalysisErrors = {
+    /**
+     * Validation Error
+     */
+    422: HttpValidationError;
+};
+
+export type StartUserPositionAnalysisError = StartUserPositionAnalysisErrors[keyof StartUserPositionAnalysisErrors];
+
+export type StartUserPositionAnalysisResponses = {
+    /**
+     * Successful Response
+     */
+    202: AnalysisProgress;
+};
+
 export type StartUserPositionAnalysisResponse = StartUserPositionAnalysisResponses[keyof StartUserPositionAnalysisResponses];
