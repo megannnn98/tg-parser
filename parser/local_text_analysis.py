@@ -28,7 +28,8 @@ class LocalTextAnalysis(PositionAnalysis):
     # Reuse source loading, cancellation-safe persistence and progress reporting.
     # This constructor deliberately does not create a gateway or provider guard.
     def __init__(self, store, model=PRODUCTION_MODEL, embed_missing=None,
-                 reranker: Callable[[list[tuple[str, str]]], list[float]] | None = None):
+                 reranker: Callable[[list[tuple[str, str]]], list[float]] | None = None,
+                 stance_verifier: Callable | None = None, sarcasm_detector: Callable | None = None):
         """`model` names the vectors of message_embeddings to compare.
 
         `embed_missing` is awaited before they are read, so that comments
@@ -38,13 +39,19 @@ class LocalTextAnalysis(PositionAnalysis):
         self.model = model
         self._embed_missing = embed_missing
         self.reranker = reranker
+        self.stance_verifier = stance_verifier
+        self.sarcasm_detector = sarcasm_detector
         self._vectors = f"{model.name}@{model.revision}:{model.passage_prefix.strip()}{model.pooling}:l2"
         reranker_version = (
             f"{reranker.spec.name}@{reranker.spec.revision}" if reranker is not None and hasattr(reranker, "spec")
             else "none"
         )
-        self.version = digest(["local-comment-similarity:centered-centroid:closest-comments:rerank-v5",
-                               self._vectors, reranker_version])
+        stance_version = (
+            f"{stance_verifier.spec.name}@{stance_verifier.spec.revision}" if stance_verifier is not None and hasattr(stance_verifier, "spec")
+            else "none"
+        )
+        self.version = digest(["local-comment-similarity:centered-centroid:closest-comments:rerank-nli-v6",
+                               self._vectors, reranker_version, stance_version])
 
     def ensure_provider_unchanged(self):
         pass
@@ -180,19 +187,30 @@ class LocalTextAnalysis(PositionAnalysis):
         return matches
 
     @classmethod
-    def _pair(cls, left, right, vectors, candidates, counts, matrix, reranker=None):
+    def _pair(cls, left, right, vectors, candidates, counts, matrix, reranker=None, stance_verifier=None, sarcasm_detector=None):
         import numpy as np
         a, b = candidates[left], candidates[right]
 
         def evidence(comment):
             return Evidence(**{k: comment[k] for k in ("text", "date", "channel", "message_id")},
                             quote="", position="").model_dump()
+        closest = cls._closest_comments(a, b, matrix, reranker)
+        judgements = stance_verifier([(a[i][1]["text"], b[j][1]["text"]) for _, i, j in closest]) if stance_verifier else []
+        sarcasm = sarcasm_detector([text for _, i, j in closest for text in (a[i][1]["text"], b[j][1]["text"])]) if sarcasm_detector else []
+        if judgements and len(judgements) != len(closest):
+            raise ValueError("NLI-проверка вернула неполный набор оценок")
         matches = [{"similarity": round(float(np.clip(score, -1, 1)), 4),
-                    "left": evidence(a[i][1]), "right": evidence(b[j][1])}
-                   for score, i, j in cls._closest_comments(a, b, matrix, reranker)]
+                    "left": evidence(a[i][1]), "right": evidence(b[j][1]),
+                    "sarcasm_suspected": bool(sarcasm and max(sarcasm[2 * index:2 * index + 2]) >= .55),
+                    **({"relation": judgement.relation, "relation_confidence": judgement.confidence,
+                        "sarcasm_suspected": bool(getattr(judgement, "sarcasm", False))}
+                       if judgements else {})}
+                   for index, ((score, i, j), judgement) in enumerate(zip(closest, judgements or [None] * len(closest)))]
         return {"left": left, "right": right,
                 "similarity": round(float(np.clip(vectors[left] @ vectors[right], -1, 1)), 4),
-                "left_comments": counts[left], "right_comments": counts[right], "examples": matches}
+                "left_comments": counts[left], "right_comments": counts[right], "examples": matches,
+                "contradictions": sum(match.get("relation") == "contradiction" for match in matches),
+                "checked_examples": sum(match.get("relation") != "unchecked" for match in matches)}
 
     async def run(self, *, lock_held=False, checkpoint=None, focus_tg_id: int | None = None):
         with nullcontext() if lock_held else self.store.analysis_lock():
@@ -226,7 +244,7 @@ class LocalTextAnalysis(PositionAnalysis):
                         ),
                     )
                     pair = await asyncio.to_thread(
-                        self._pair, left, right, vectors, examples, counts, matrix, self.reranker
+                        self._pair, left, right, vectors, examples, counts, matrix, self.reranker, self.stance_verifier, self.sarcasm_detector
                     )
                     pair["profiles"] = {str(u): {"tg_id": u,
                                                "display_username": profiles[u].display_username} for u in (left, right)}
@@ -298,5 +316,10 @@ class LocalTextAnalysis(PositionAnalysis):
                 continue
             for user in (pair["left"], pair["right"]):
                 nodes[user] = pair["profiles"][str(user)]
-            edges.append({"left": pair["left"], "right": pair["right"], "similarity": pair["similarity"]})
+            examples = pair.get("examples", [])
+            edges.append({"left": pair["left"], "right": pair["right"], "similarity": pair["similarity"],
+                          # Also support results saved before these aggregate
+                          # fields were added: their examples already carry the verdict.
+                          "contradictions": pair.get("contradictions", sum(example.get("relation") == "contradiction" for example in examples)),
+                          "checked_examples": pair.get("checked_examples", sum(example.get("relation") != "unchecked" for example in examples))})
         return {"nodes": list(nodes.values()), "edges": edges}

@@ -92,6 +92,9 @@ class TextMatch(ResponseValue):
     similarity: float
     left: Evidence
     right: Evidence
+    relation: Literal["unchecked", "contradiction", "unclear"] = "unchecked"
+    relation_confidence: float | None = None
+    sarcasm_suspected: bool = False
 
 
 class SimilarAuthor(ResponseValue):

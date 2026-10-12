@@ -28,9 +28,10 @@ class Embedding:
         self.stored.append(self.store.embed(self.encode))
 
 
-def analysis(tmp_path, encode=vector, reranker=None):
+def analysis(tmp_path, encode=vector, reranker=None, stance_verifier=None):
     store = store_for(tmp_path)
-    service = LocalTextAnalysis(store, MODEL, Embedding(store, encode), reranker=reranker)
+    service = LocalTextAnalysis(store, MODEL, Embedding(store, encode), reranker=reranker,
+                                stance_verifier=stance_verifier)
     service.example_min_chars = 0  # The comments of these tests are single words.
     return service
 
@@ -115,15 +116,44 @@ def test_reranker_orders_the_embedding_candidates_before_examples_are_chosen(tmp
     for user, texts in ((1, ["a", "b"]), (2, ["c", "d"]), (3, ["z"])):
         create_source(tmp_path, user, [(i, text, "2026-01-01") for i, text in enumerate(texts)])
 
+    expected = [("b", "c"), ("b", "d"), ("a", "c"), ("a", "d")]
+    reranked_expected_pair = False
+
     def rerank(pairs):
-        assert pairs == [("b", "c"), ("b", "d"), ("a", "c"), ("a", "d")]
-        return [0.1, 0.2, 0.9, 0.8]
+        nonlocal reranked_expected_pair
+        # Other author pairs can be processed first; this test is about the
+        # candidates of users 1 and 2, rather than the global iteration order.
+        if pairs == expected:
+            reranked_expected_pair = True
+            return [0.1, 0.2, 0.9, 0.8]
+        return [0.0] * len(pairs)
 
     service = analysis(tmp_path, lambda text: vectors.get(text[0], [0, 1]), reranker=rerank)
     service.example_min_chars = 0
     asyncio.run(service.run())
+    assert reranked_expected_pair
     [author] = service.results(1).similar_authors
     assert [(e.left.text, e.right.text) for e in author.examples] == [("a", "c"), ("b", "d")]
+
+
+def test_nli_marks_a_retrieved_pair_as_a_contradiction(tmp_path):
+    from embeddings.stance import StanceJudgement
+
+    class Verifier:
+        def __call__(self, pairs):
+            # The analysis runs the verifier for every author pair.  The
+            # retrieval order is an implementation detail, not this test's
+            # contract.
+            return [StanceJudgement("contradiction", 0.91) for _ in pairs]
+
+    for user, text in ((1, "a"), (2, "b"), (3, "z")):
+        create_source(tmp_path, user, [(1, text, "2026-01-01")])
+    service = analysis(tmp_path, lambda text: [1, 0] if text in {"a", "b"} else [0, 1], stance_verifier=Verifier())
+    service.example_min_chars = 0
+    asyncio.run(service.run())
+    match = service.results(1).similar_authors[0].examples[0]
+    assert match.relation == "contradiction"
+    assert match.relation_confidence == 0.91
 
 
 def test_a_text_both_authors_wrote_is_not_an_example(tmp_path):

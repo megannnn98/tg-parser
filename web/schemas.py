@@ -188,6 +188,8 @@ class SimilarityGraphEdge(BaseModel):
     left: int
     right: int
     similarity: float
+    contradictions: int = 0
+    checked_examples: int = 0
 
 
 class SimilarityGraph(BaseModel):

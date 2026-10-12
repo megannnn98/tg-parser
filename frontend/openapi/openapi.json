@@ -123,6 +123,24 @@
         }
       }
     },
+    "/api/v1/position-comparisons/graph": {
+      "get": {
+        "summary": "Get Similarity Graph",
+        "operationId": "get_similarity_graph",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimilarityGraph"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/collect": {
       "post": {
         "summary": "Start Collect",
@@ -468,6 +486,24 @@
         }
       }
     },
+    "/api/v1/position-analysis": {
+      "post": {
+        "summary": "Start Position Analysis",
+        "operationId": "start_position_analysis",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgress"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/users/{tg_id}/position-analysis": {
       "post": {
         "summary": "Start User Position Analysis",
@@ -500,24 +536,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/position-analysis": {
-      "post": {
-        "summary": "Start Position Analysis",
-        "operationId": "start_position_analysis",
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AnalysisProgress"
                 }
               }
             }
@@ -1533,6 +1551,81 @@
         ],
         "title": "SimilarAuthor"
       },
+      "SimilarityGraph": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarityGraphNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/SimilarityGraphEdge"
+            },
+            "type": "array",
+            "title": "Edges"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "title": "SimilarityGraph"
+      },
+      "SimilarityGraphEdge": {
+        "properties": {
+          "left": {
+            "type": "integer",
+            "title": "Left"
+          },
+          "right": {
+            "type": "integer",
+            "title": "Right"
+          },
+          "similarity": {
+            "type": "number",
+            "title": "Similarity"
+          },
+          "contradictions": {
+            "type": "integer",
+            "title": "Contradictions",
+            "default": 0
+          },
+          "checked_examples": {
+            "type": "integer",
+            "title": "Checked Examples",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "left",
+          "right",
+          "similarity"
+        ],
+        "title": "SimilarityGraphEdge"
+      },
+      "SimilarityGraphNode": {
+        "properties": {
+          "tg_id": {
+            "type": "integer",
+            "title": "Tg Id"
+          },
+          "display_username": {
+            "type": "string",
+            "title": "Display Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tg_id",
+          "display_username"
+        ],
+        "title": "SimilarityGraphNode"
+      },
       "TextMatch": {
         "properties": {
           "similarity": {
@@ -1544,13 +1637,42 @@
           },
           "right": {
             "$ref": "#/components/schemas/Evidence"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "unchecked",
+              "contradiction",
+              "unclear"
+            ],
+            "title": "Relation",
+            "default": "unchecked"
+          },
+          "relation_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation Confidence"
+          },
+          "sarcasm_suspected": {
+            "type": "boolean",
+            "title": "Sarcasm Suspected",
+            "default": false
           }
         },
         "type": "object",
         "required": [
           "similarity",
           "left",
-          "right"
+          "right",
+          "relation",
+          "relation_confidence",
+          "sarcasm_suspected"
         ],
         "title": "TextMatch"
       },
