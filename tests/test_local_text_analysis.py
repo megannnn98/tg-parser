@@ -116,13 +116,22 @@ def test_reranker_orders_the_embedding_candidates_before_examples_are_chosen(tmp
     for user, texts in ((1, ["a", "b"]), (2, ["c", "d"]), (3, ["z"])):
         create_source(tmp_path, user, [(i, text, "2026-01-01") for i, text in enumerate(texts)])
 
+    expected = [("b", "c"), ("b", "d"), ("a", "c"), ("a", "d")]
+    reranked_expected_pair = False
+
     def rerank(pairs):
-        assert pairs == [("b", "c"), ("b", "d"), ("a", "c"), ("a", "d")]
-        return [0.1, 0.2, 0.9, 0.8]
+        nonlocal reranked_expected_pair
+        # Other author pairs can be processed first; this test is about the
+        # candidates of users 1 and 2, rather than the global iteration order.
+        if pairs == expected:
+            reranked_expected_pair = True
+            return [0.1, 0.2, 0.9, 0.8]
+        return [0.0] * len(pairs)
 
     service = analysis(tmp_path, lambda text: vectors.get(text[0], [0, 1]), reranker=rerank)
     service.example_min_chars = 0
     asyncio.run(service.run())
+    assert reranked_expected_pair
     [author] = service.results(1).similar_authors
     assert [(e.left.text, e.right.text) for e in author.examples] == [("a", "c"), ("b", "d")]
 
